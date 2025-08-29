@@ -1,6 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.2.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithPopup, GoogleAuthProvider } from "https://www.gstatic.com/firebasejs/12.2.0/firebase-auth.js";
-import { getFirestore, doc, setDoc, getDoc, updateDoc, arrayUnion } from "https://www.gstatic.com/firebasejs/12.2.0/firebase-firestore.js";
+import { getFirestore, collection, doc, setDoc, getDocs, getDoc, updateDoc, arrayUnion } from "https://www.gstatic.com/firebasejs/12.2.0/firebase-firestore.js";
 
 // Initialize Firebase
 const app = initializeApp({
@@ -13,17 +13,12 @@ const app = initializeApp({
 });
 const auth = getAuth(app);
 const db = getFirestore(app);
-
 const provider = new GoogleAuthProvider();
 
-onAuthStateChanged(auth, user => {
-    if(user != null) {
-        console.log('logged in!');
-    } else {
-        console.log('No user');
-    }
-});
+// Get a reference to the 'courses' collection
+const coursesRef = collection(db, "courses");
 
+let courses = [];
 let gameData = {
     rounds: [],
     friends: [
@@ -40,23 +35,26 @@ let gameData = {
     }
 };
 
-let courses = {};
-
-fetch("courses.json")
-    .then(response => response.json())
-    .then(data => {
-        courses = data;
-
+async function loadCourses() {
+    try {
+        const querySnapshot = await getDocs(coursesRef);
         const courseSelect = document.getElementById("course");
-        Object.entries(courses).forEach(([key, course]) => {
+        let index = 0;
+        querySnapshot.forEach((doc) => {
+            console.log(doc.data(), index);
+            const course = doc.data();
+            courses.push(course); // Store the course data in the courses array
             const option = document.createElement("option");
-            option.value = key;
-            option.textContent = `${course.name} (${course.holes} holes)`;
+            option.value = index; 
+            option.textContent = `${course.title} (${course.holes.length} holes)`;
             courseSelect.appendChild(option);
-        });
-    })
-    .catch(error => console.error("Error loading courses:", error));
 
+            index += 1;
+        });
+    } catch (error) {
+        console.error("Error loading courses from Firestore:", error);
+    }
+}
 
 // REWRITE: loginWithGoogle() - This is already correct but needs to be connected
 async function loginWithGoogle() {
@@ -203,8 +201,9 @@ function startRound() {
     }
     
     const course = courses[courseId];
+
     const players = playersText.split(',').map(p => p.trim());
-    
+
     gameData.currentRound = {
         courseId: courseId,
         courseName: course.name,
@@ -238,8 +237,8 @@ function createScorecard(course, players) {
     container.appendChild(headerRow);
 
     // Hole rows
-    for (let hole = 1; hole <= course.holes; hole++) {
-        const par = course.pars[hole - 1]; // Get par for the current hole
+    for (let hole = 1; hole <= course.holes.length; hole++) {
+        const par = course.holes[hole - 1]; // Get par for the current hole
         const distance = course.distance[hole - 1];
         const row = document.createElement('div');
         row.className = 'hole-row';
@@ -273,7 +272,7 @@ function createScorecard(course, players) {
     players.forEach(player => {
         totalHTML += `<div id="total-${player.replace(/\s+/g, '-')}">-</div>`;
     });
-    totalHTML += `<div>${course.pars.reduce((a, b) => a + b, 0)}</div>`;
+    totalHTML += `<div>${course.holes.reduce((a, b) => a + b, 0)}</div>`;
     
     totalRow.innerHTML = totalHTML;
     container.appendChild(totalRow);
@@ -286,7 +285,7 @@ function updateScore(player, holeIndex, change) {
     if (!gameData.currentRound || !gameData.currentRound.scores[player]) return;
 
     const course = courses[gameData.currentRound.courseId];
-    const par = course.pars[holeIndex];
+    const par = course.holes[holeIndex];
 
     // Get current score, default to undefined if not set
     let currentScore = gameData.currentRound.scores[player][holeIndex];
@@ -444,7 +443,7 @@ async function loadHistory() {
             .join(' | ');
 
         const course = courses[round.courseId];
-        const par = course.pars.reduce((a, b) => a + b, 0);
+        const par = course.holes.reduce((a, b) => a + b, 0);
         const yourScore = round.finalScores['You'] || 0;
         const scoreDiff = yourScore - par;
         const scoreDiffText = scoreDiff > 0 ? `+${scoreDiff}` : scoreDiff.toString();
@@ -691,14 +690,31 @@ gameData.rounds = [
     }
 ];
 
+// Add this new function to your script.js file
+function bypassLogin() {
+    document.getElementById('login-screen').style.display = 'none';
+    document.getElementById('main-app').style.display = 'block';
+    showSection('new-round');
+}
+window.showSection = showSection;
+window.startRound = startRound;
+window.updateScore = updateScore;
+
 // Initialize the page
 document.addEventListener('DOMContentLoaded', function() {
     // Check authentication state
     checkAuthentication();
+    loadCourses();
     
     // Add login button listener
     const loginBtn = document.getElementById('google-login-btn');
     if (loginBtn) {
         loginBtn.addEventListener('click', loginWithGoogle);
+    }
+
+    // Inside your DOMContentLoaded block
+    const debugBtn = document.getElementById('debug-btn');
+    if (debugBtn) {
+        debugBtn.addEventListener('click', bypassLogin);
     }
 });

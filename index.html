@@ -6,12 +6,9 @@
     <title>Disc Golf Tracker</title>
     <link rel="stylesheet" href="style.css">
     <script type="module" src="script.js"></script>
-    <script src="https://accounts.google.com/gsi/client" async defer></script>
-    <script src="https://apis.google.com/js/platform.js" async defer></script>
-    <meta name="google-signin-client_id" content="988793198231-s0rttosr7rtbiko5lmh9s1creefg4fvg.apps.googleusercontent.com">
 </head>
 <body>
-    <div id="login-screen" class="login-container">
+    <div id="login-screen" class="login-container" style="display: true;">
         <div class="login-card">
             <div class="login-header">
                 <h1>🥏 Disc Golf Tracker</h1>
@@ -23,6 +20,7 @@
                 <p>Sign in to access your disc golf data and connect with friends.</p>
                 
                 <button id='google-login-btn'>LOGIN</button>
+                <button id='debug-btn'>DEBUG</button>
             </div>
         </div>
     </div>
