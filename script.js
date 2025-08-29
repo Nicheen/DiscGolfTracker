@@ -17,6 +17,8 @@ const provider = new GoogleAuthProvider();
 
 // Get a reference to the 'courses' collection
 const coursesRef = collection(db, "courses");
+const usersRef = collection(db, "users");
+const roundsRef = collection(db, "rounds");
 
 let courses = [];
 let gameData = {
@@ -135,20 +137,20 @@ async function loadUserData(user) {
             
             // Update profile data
             gameData.profile = {
-                username: userData.displayName || user.displayName,
+                username: userData.username || user.username,
                 email: userData.email,
                 favoriteDisc: userData.favoriteDisc || '',
                 bio: userData.bio || ''
             };
             
             // Update UI elements
-            document.getElementById('user-name').textContent = userData.displayName;
+            document.getElementById('user-name').textContent = userData.name;
             document.getElementById('user-avatar').src = userData.photoURL || '';
-            document.getElementById('username').value = userData.displayName;
+            document.getElementById('username').value = userData.username;
             document.getElementById('email').value = userData.email;
             document.getElementById('favorite-disc').value = userData.favoriteDisc || '';
             document.getElementById('bio').value = userData.bio || '';
-            document.getElementById('players').value = userData.displayName;
+            document.getElementById('players').value = userData.username;
         }
         
         // Load rounds
@@ -705,7 +707,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Check authentication state
     checkAuthentication();
     loadCourses();
-    
+    loadUserData("nicheen");
     // Add login button listener
     const loginBtn = document.getElementById('google-login-btn');
     if (loginBtn) {
