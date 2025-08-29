@@ -289,3 +289,48 @@ input:focus, select:focus, textarea:focus {
     color: #6c757d;
     border: 2px dashed #dee2e6;
 }
+.score-control {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.score-decrease, .score-increase {
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+    border: none;
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    font-size: 20px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
+}
+
+.score-decrease:hover, .score-increase:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
+    background: linear-gradient(135deg, #5a6cd9, #6a4091);
+}
+
+.score-decrease:active, .score-increase:active {
+    transform: translateY(0);
+    box-shadow: 0 3px 10px rgba(102, 126, 234, 0.2);
+}
+
+.score-display {
+    font-size: 18px;
+    font-weight: 600;
+    color: #495057;
+    background: #f8f9fa;
+    padding: 8px 15px;
+    border-radius: 8px;
+    border: 2px solid #e9ecef;
+    min-width: 50px;
+    text-align: center;
+}

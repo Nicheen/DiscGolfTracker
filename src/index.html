@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Disc Golf Tracker</title>
     <link rel="stylesheet" href="style.css">
+    <script type="module" src="script.js"></script>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="https://apis.google.com/js/platform.js" async defer></script>
     <meta name="google-signin-client_id" content="988793198231-s0rttosr7rtbiko5lmh9s1creefg4fvg.apps.googleusercontent.com">
@@ -21,22 +22,7 @@
                 <h2>Welcome Back!</h2>
                 <p>Sign in to access your disc golf data and connect with friends.</p>
                 
-                <div id="g_id_onload"
-                     data-client_id="YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com"
-                     data-context="signin"
-                     data-ux_mode="popup"
-                     data-callback="handleCredentialResponse"
-                     data-auto_prompt="false">
-                </div>
-                
-                <div class="g_id_signin"
-                     data-type="standard"
-                     data-shape="rectangular"
-                     data-theme="outline"
-                     data-text="signin_with"
-                     data-size="large"
-                     data-logo_alignment="left">
-                </div>
+                <button id='google-login-btn'>LOGIN</button>
             </div>
         </div>
     </div>
@@ -49,7 +35,7 @@
                     <p>Track your rounds, improve your game, connect with friends</p>
                 </div>
                 <div class="user-info">
-                    <img id="user-avatar" src="" alt="User" class="user-avatar">
+                    <img id="user-avatar" src="./images/user.png" alt="User" class="user-avatar">
                     <span id="user-name">Demo User</span>
                     <button class="btn logout-btn" onclick="signOut()">Logout</button>
                 </div>
@@ -73,10 +59,6 @@
                     <label for="course">Course</label>
                     <select id="course">
                         <option value="">Select a course</option>
-                        <option value="oakwood-park">Oakwood Park (18 holes)</option>
-                        <option value="riverside-course">Riverside Course (9 holes)</option>
-                        <option value="mountain-view">Mountain View DGC (18 holes)</option>
-                        <option value="city-central">City Central Park (12 holes)</option>
                     </select>
                 </div>
                 <div class="form-group">
