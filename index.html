@@ -6,21 +6,27 @@
     <title>Disc Golf Tracker</title>
     <link rel="stylesheet" href="style.css">
     <script type="module" src="script.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 </head>
 <body>
     <div id="login-screen" class="login-container" style="display: true;">
         <div class="login-card">
             <div class="login-header">
                 <h1>🥏 Disc Golf Tracker</h1>
-                <p>Track your rounds, improve your game, connect with friends</p>
             </div>
             
             <div class="login-content">
                 <h2>Welcome Back!</h2>
                 <p>Sign in to access your disc golf data and connect with friends.</p>
                 
-                <button id='google-login-btn'>LOGIN</button>
-                <button id='debug-btn'>DEBUG</button>
+                <!-- SIGN UP / LOGIN FORM -->
+                <form id="auth-form">
+                    <input type="email" id="login-email" placeholder="Email" required />
+                    <input type="password" id="login-password" placeholder="Password" required />
+                    
+                    <button class="btn" type="button" onclick="signUp()">Sign Up</button>
+                    <button class="btn" type="button" onclick="signIn()">Sign In</button>
+                </form>
             </div>
         </div>
     </div>
@@ -35,7 +41,6 @@
                 <div class="user-info">
                     <img id="user-avatar" src="./images/user.png" alt="User" class="user-avatar">
                     <span id="user-name">Demo User</span>
-                    <button class="btn logout-btn" onclick="signOut()">Logout</button>
                 </div>
             </div>
         </header>
@@ -132,26 +137,23 @@
 
         <!-- Profile Section -->
         <div id="profile" class="section">
-            <div class="card">
-                <h2>Your Profile</h2>
-                <div class="form-group">
-                    <label for="username">Username</label>
-                    <input type="text" id="username" value="DiscGolfPro">
-                </div>
-                <div class="form-group">
-                    <label for="email">Email</label>
-                    <input type="email" id="email" value="player@example.com">
-                </div>
-                <div class="form-group">
-                    <label for="favorite-disc">Favorite Disc</label>
-                    <input type="text" id="favorite-disc" placeholder="e.g., Innova Champion Destroyer">
-                </div>
-                <div class="form-group">
-                    <label for="bio">Bio</label>
-                    <textarea id="bio" rows="4" placeholder="Tell us about your disc golf journey..."></textarea>
-                </div>
-                <button class="btn" onclick="saveProfile()">Save Profile</button>
+        <div class="card">
+            <h2>Your Profile</h2>
+            <div class="form-group">
+            <label for="profile-username">Username</label>
+            <input type="text" id="profile-username" placeholder="Enter username">
             </div>
+            <div class="form-group">
+            <label for="profile-email">Email</label>
+            <input type="email" id="profile-email" readonly>
+            </div>
+            <div class="form-group">
+            <label for="profile-bio">Bio</label>
+            <textarea id="profile-bio" rows="4" placeholder="Tell us about your disc golf journey..."></textarea>
+            </div>
+            <button class="btn" onclick="saveProfile()">Save Profile</button>
+            <button class="btn logout-btn" onclick="signOut()">Logout</button>
+        </div>
         </div>
     </div>
 </body>

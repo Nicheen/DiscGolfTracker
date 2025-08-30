@@ -1,183 +1,165 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/12.2.0/firebase-app.js";
-import { getAuth, onAuthStateChanged, signInWithPopup, GoogleAuthProvider } from "https://www.gstatic.com/firebasejs/12.2.0/firebase-auth.js";
-import { getFirestore, collection, doc, setDoc, getDocs, getDoc, updateDoc, arrayUnion } from "https://www.gstatic.com/firebasejs/12.2.0/firebase-firestore.js";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-// Initialize Firebase
-const app = initializeApp({
-  apiKey: "AIzaSyAzKQPIPO4FVAWbBBD-E-hHUOaQGPZnl-Y",
-  authDomain: "discgolftracker-162db.firebaseapp.com",
-  projectId: "discgolftracker-162db",
-  storageBucket: "discgolftracker-162db.firebasestorage.app",
-  messagingSenderId: "334737718769",
-  appId: "1:334737718769:web:6c40996f1b306ced121850"
+const supabaseUrl = 'https://yklfurbhvgrsmnfupsey.supabase.co'
+const supabaseKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlrbGZ1cmJodmdyc21uZnVwc2V5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTY1NjIyMjcsImV4cCI6MjA3MjEzODIyN30.eEeA4Dtnk48oAULw78DWQ4mDplqiDcxv46fiIlTLDsE"
+const supabase = createClient(supabaseUrl, supabaseKey, {
+  auth: {
+    persistSession: true,     // keeps session in localStorage
+    autoRefreshToken: true    // refreshes JWT automatically
+  }
 });
-const auth = getAuth(app);
-const db = getFirestore(app);
-const provider = new GoogleAuthProvider();
 
-// Get a reference to the 'courses' collection
-const coursesRef = collection(db, "courses");
-const usersRef = collection(db, "users");
-const roundsRef = collection(db, "rounds");
+let coursesData = [];
 
-let courses = [];
-let gameData = {
-    rounds: [],
-    friends: [
-        { username: "mike_throws", status: "online", totalRounds: 15, avgScore: 52 },
-        { username: "sarah_disc", status: "offline", totalRounds: 23, avgScore: 48 },
-        { username: "chain_seeker", status: "online", totalRounds: 31, avgScore: 45 }
-    ],
-    currentRound: null,
-    profile: {
-        username: "",
-        email: "",
-        favoriteDisc: "",
-        bio: ""
-    }
-};
+async function signUp() {
+    const email = document.getElementById("login-email").value;
+    const password = document.getElementById("login-password").value;
 
-async function loadCourses() {
-    try {
-        const querySnapshot = await getDocs(coursesRef);
-        const courseSelect = document.getElementById("course");
-        let index = 0;
-        querySnapshot.forEach((doc) => {
-            console.log(doc.data(), index);
-            const course = doc.data();
-            courses.push(course); // Store the course data in the courses array
-            const option = document.createElement("option");
-            option.value = index; 
-            option.textContent = `${course.title} (${course.holes.length} holes)`;
-            courseSelect.appendChild(option);
+    const { data, error } = await supabase.auth.signUp({
+        email,
+        password
+    });
 
-            index += 1;
+    if (error) {
+        Swal.fire({
+            icon: "error",
+            title: "Oops...",
+            text: error.message,
         });
-    } catch (error) {
-        console.error("Error loading courses from Firestore:", error);
+    } else {
+        Swal.fire({
+            title: "Successful",
+            text: 'Check your email to confirm your account!',
+            icon: "success"
+        });
     }
 }
 
-// REWRITE: loginWithGoogle() - This is already correct but needs to be connected
-async function loginWithGoogle() {
-    try {
-        const result = await signInWithPopup(auth, provider);
-        const user = result.user;
-        
-        // Initialize user in Firestore if first time
-        const userRef = doc(db, 'users', user.uid);
-        const userSnap = await getDoc(userRef);
-        
-        if (!userSnap.exists()) {
-            // First time user - create profile
-            await setDoc(userRef, {
-                uid: user.uid,
-                email: user.email,
-                displayName: user.displayName,
-                photoURL: user.photoURL,
-                createdAt: new Date(),
-                stats: {
-                    totalRounds: 0,
-                    avgScore: 0,
-                    bestScore: null
-                },
-                favoriteDisc: '',
-                bio: ''
-            });
-        }
-        
-        // Load user data and update UI
-        await loadUserData(user);
-        
-        // Update UI
-        document.getElementById('login-screen').style.display = 'none';
-        document.getElementById('main-app').style.display = 'block';
-        
-        return user;
-    } catch (error) {
-        console.error('Login error:', error);
-        alert('Failed to login. Please try again.');
+async function signIn() {
+    const email = document.getElementById("login-email").value;
+    const password = document.getElementById("login-password").value;
+
+    const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password
+    });
+
+    if (error) {
+        Swal.fire({
+            icon: "error",
+            title: "Oops...",
+            text: error.message,
+        });
+    } else {
+        loginSuccessful();
+        loadProfile();
     }
 }
 
 async function signOut() {
-    try {
-        await auth.signOut();
-        
-        // Clear local data
-        gameData = {
-            rounds: [],
-            friends: [],
-            currentRound: null,
-            profile: {}
-        };
-        
-        // Update UI
-        document.getElementById('login-screen').style.display = 'flex';
-        document.getElementById('main-app').style.display = 'none';
-    } catch (error) {
-        console.error('Sign out error:', error);
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+        Swal.fire({
+            icon: "error",
+            title: "Oops...",
+            text: error.message,
+        });
+    } else {
+        Swal.fire({
+            title: "Successfuly Signed out",
+            text: 'You are being redirected to the sign in page!',
+            icon: "success"
+        });
+        signOutSuccessful();
     }
 }
 
-// REWRITE: loadUserData()
-async function loadUserData(user) {
+// Load profile data when logged in
+async function loadProfile() {
+    const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
-        user = auth.currentUser;
-        if (!user) return;
+        Swal.fire({
+            icon: "error",
+            title: "You must login first!",
+            text: error.message,
+        });
+        return;
     }
-    
-    try {
-        // Load user profile
-        const userRef = doc(db, 'users', user.uid);
-        const userSnap = await getDoc(userRef);
-        
-        if (userSnap.exists()) {
-            const userData = userSnap.data();
-            
-            // Update profile data
-            gameData.profile = {
-                username: userData.username || user.username,
-                email: userData.email,
-                favoriteDisc: userData.favoriteDisc || '',
-                bio: userData.bio || ''
-            };
-            
-            // Update UI elements
-            document.getElementById('user-name').textContent = userData.name;
-            document.getElementById('user-avatar').src = userData.photoURL || '';
-            document.getElementById('username').value = userData.username;
-            document.getElementById('email').value = userData.email;
-            document.getElementById('favorite-disc').value = userData.favoriteDisc || '';
-            document.getElementById('bio').value = userData.bio || '';
-            document.getElementById('players').value = userData.username;
-        }
-        
-        // Load rounds
-        await loadRounds();
-        
-        // Load friends
-        await loadFriendsFromFirestore();
-        
-    } catch (error) {
-        console.error('Error loading user data:', error);
+
+    // Fill in email field
+    document.getElementById("profile-email").value = user.email;
+
+    // Load profile from DB
+    const { data, error } = await supabase
+        .from("profiles")
+        .select("username, bio")
+        .eq("id", user.id)
+        .single();
+
+    if (data) {
+        document.getElementById("profile-username").value = data.username || "";
+        document.getElementById("user-name").innerHTML = data.username || "";
+        document.getElementById("profile-bio").value = data.bio || "";
     }
 }
 
-function checkAuthentication() {
-    auth.onAuthStateChanged(async (user) => {
-        if (user) {
-            // User is signed in
-            await loadUserData(user);
-            document.getElementById('login-screen').style.display = 'none';
-            document.getElementById('main-app').style.display = 'block';
-        } else {
-            // No user signed in
-            document.getElementById('login-screen').style.display = 'flex';
-            document.getElementById('main-app').style.display = 'none';
-        }
+async function saveProfile() {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return;
+
+  const username = document.getElementById("profile-username").value;
+  const bio = document.getElementById("profile-bio").value;
+
+  const { error } = await supabase.from("profiles").upsert({
+    id: user.id,
+    username,
+    bio,
+    updated_at: new Date()
+  });
+
+  if (error) {
+    Swal.fire({
+        icon: "error",
+        title: "Error Saving Profile",
+        text: error.message,
     });
+  } else {
+    Swal.fire({
+        title: "Profile Saved!",
+        icon: "success"
+    });
+  }
 }
+
+async function loadCourses() {
+    // Load profile from DB
+    const { data, error } = await supabase
+        .from("courses")
+        .select("id, name, holes, distances")
+    
+    if (error) {
+        console.error("Error loading courses:", error);
+        return [];
+    } else {
+        console.log(data);
+    }
+
+    coursesData = data.map(course => ({
+        id: course.id,
+        name: course.name,
+        holes: course.holes.split(',').map(Number),
+        distances: course.distances.split(',').map(Number)
+    }));
+
+    const select = document.getElementById("course");
+    console.log(coursesData);
+    coursesData.forEach(course => {
+        const option = document.createElement("option");
+        option.value = course.id;
+        option.textContent = `${course.name} ${course.holes.length}`;
+        select.appendChild(option);
+    });
+} 
 
 // Navigation
 function showSection(sectionId) {
@@ -610,33 +592,6 @@ function addFriendToRound(friendUsername) {
     updateTotals();
 }
 
-// REWRITE: saveProfile()
-async function saveProfile() {
-    if (!auth.currentUser) return;
-    
-    try {
-        const profileData = {
-            displayName: document.getElementById('username').value,
-            favoriteDisc: document.getElementById('favorite-disc').value,
-            bio: document.getElementById('bio').value
-        };
-        
-        const userRef = doc(db, 'users', auth.currentUser.uid);
-        await updateDoc(userRef, profileData);
-        
-        // Update local data
-        gameData.profile = {
-            ...gameData.profile,
-            ...profileData
-        };
-        
-        alert('Profile saved!');
-    } catch (error) {
-        console.error('Error saving profile:', error);
-        alert('Failed to save profile.');
-    }
-}
-
 async function updateUserStats() {
     if (!auth.currentUser || gameData.rounds.length === 0) return;
     
@@ -664,59 +619,34 @@ async function updateUserStats() {
     }
 }
 
-// Add some sample data for demonstration
-gameData.rounds = [
-    {
-        id: 1,
-        courseId: "oakwood-park",
-        courseName: "Oakwood Park",
-        date: "8/25/2025",
-        players: ["You", "Mike"],
-        finalScores: { "You": 58, "Mike": 62 }
-    },
-    {
-        id: 2,
-        courseId: "riverside-course", 
-        courseName: "Riverside Course",
-        date: "8/27/2025",
-        players: ["You", "Sarah"],
-        finalScores: { "You": 32, "Sarah": 29 }
-    },
-    {
-        id: 3,
-        courseId: "oakwood-park",
-        courseName: "Oakwood Park", 
-        date: "8/28/2025",
-        players: ["You"],
-        finalScores: { "You": 55 }
-    }
-];
-
 // Add this new function to your script.js file
-function bypassLogin() {
+function loginSuccessful() {
     document.getElementById('login-screen').style.display = 'none';
     document.getElementById('main-app').style.display = 'block';
-    showSection('new-round');
 }
+
+function signOutSuccessful() {
+    document.getElementById('login-screen').style.display = 'block';
+    document.getElementById('main-app').style.display = 'none';
+}
+
 window.showSection = showSection;
 window.startRound = startRound;
 window.updateScore = updateScore;
+window.signOut = signOut;
+window.signUp = signUp;
+window.signIn = signIn;
+window.saveProfile = saveProfile;
 
-// Initialize the page
-document.addEventListener('DOMContentLoaded', function() {
-    // Check authentication state
-    checkAuthentication();
+// Run on page load
+window.addEventListener("DOMContentLoaded", async () => {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (session) {
+    console.log("Restored session:", session.user.email);
+    loginSuccessful();
+    loadProfile();
     loadCourses();
-    loadUserData("nicheen");
-    // Add login button listener
-    const loginBtn = document.getElementById('google-login-btn');
-    if (loginBtn) {
-        loginBtn.addEventListener('click', loginWithGoogle);
-    }
-
-    // Inside your DOMContentLoaded block
-    const debugBtn = document.getElementById('debug-btn');
-    if (debugBtn) {
-        debugBtn.addEventListener('click', bypassLogin);
-    }
+  } else {
+    console.log("User is not logged in");
+  }
 });
