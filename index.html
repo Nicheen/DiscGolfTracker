@@ -124,14 +124,31 @@
         <div id="friends" class="section">
             <div class="card">
                 <h2>Friends & Connections</h2>
+                
+                <!-- Add Friend Section -->
                 <div class="form-group">
-                    <label for="friend-username">Add Friend by Username</label>
-                    <div style="display: flex; gap: 10px;">
-                        <input type="text" id="friend-username" placeholder="Enter username...">
-                        <button class="btn" onclick="addFriend()">Add Friend</button>
+                    <label for="friend-username">Search & Add Friends</label>
+                    <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+                        <input type="text" id="friend-username" placeholder="Search by username..." 
+                            onkeyup="if(event.key==='Enter') searchUsers()" 
+                            oninput="if(this.value.length >= 2) searchUsers(); else clearSearchResults()">
+                        <button class="btn" onclick="searchUsers()">Search</button>
+                    </div>
+                    
+                    <!-- Search Results Container -->
+                    <div id="user-search-results" style="margin-bottom: 20px;"></div>
+                </div>
+
+                <!-- Friends List -->
+                <div style="margin-top: 30px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                        <h3 style="margin: 0;">Your Friends</h3>
+                        <button class="btn" onclick="loadFriends()" style="padding: 5px 10px; font-size: 0.9em;">Refresh</button>
+                    </div>
+                    <div class="friend-list" id="friends-list">
+                        <div style="text-align: center; color: #6c757d;">Loading friends...</div>
                     </div>
                 </div>
-                <div class="friend-list" id="friends-list"></div>
             </div>
         </div>
 

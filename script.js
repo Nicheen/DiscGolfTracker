@@ -10,6 +10,7 @@ const supabase = createClient(supabaseUrl, supabaseKey, {
 });
 
 let coursesData = [];
+let currentRound = null;
 
 async function signUp() {
     const email = document.getElementById("login-email").value;
@@ -53,6 +54,7 @@ async function signIn() {
     } else {
         loginSuccessful();
         loadProfile();
+        loadCourses();
     }
 }
 
@@ -161,6 +163,446 @@ async function loadCourses() {
     });
 } 
 
+// ===== FRIENDS FUNCTIONALITY =====
+
+// Add a friend by username
+async function addFriend() {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const friendUsername = document.getElementById('friend-username').value.trim();
+    if (!friendUsername) {
+        Swal.fire({
+            icon: "warning",
+            title: "Invalid Input",
+            text: "Please enter a username",
+        });
+        return;
+    }
+
+    try {
+        // First, find the user by username
+        const { data: friendProfile, error: findError } = await supabase
+            .from('profiles')
+            .select('id, username')
+            .eq('username', friendUsername)
+            .single();
+
+        if (findError || !friendProfile) {
+            Swal.fire({
+                icon: "error",
+                title: "User Not Found",
+                text: `No user found with username: ${friendUsername}`,
+            });
+            return;
+        }
+
+        if (friendProfile.id === user.id) {
+            Swal.fire({
+                icon: "warning",
+                title: "Invalid Action",
+                text: "You cannot add yourself as a friend!",
+            });
+            return;
+        }
+
+        // Check if friendship already exists
+        const { data: existingFriendship } = await supabase
+            .from('friendships')
+            .select('id')
+            .or(`and(user_id.eq.${user.id},friend_id.eq.${friendProfile.id}),and(user_id.eq.${friendProfile.id},friend_id.eq.${user.id})`)
+            .single();
+
+        if (existingFriendship) {
+            Swal.fire({
+                icon: "info",
+                title: "Already Friends",
+                text: `You are already friends with ${friendUsername}!`,
+            });
+            return;
+        }
+
+        // Add the friendship
+        const { error: insertError } = await supabase
+            .from('friendships')
+            .insert({
+                user_id: user.id,
+                friend_id: friendProfile.id,
+                status: 'accepted', // For simplicity, auto-accept friendships
+                created_at: new Date()
+            });
+
+        if (insertError) {
+            Swal.fire({
+                icon: "error",
+                title: "Error Adding Friend",
+                text: insertError.message,
+            });
+        } else {
+            Swal.fire({
+                title: "Friend Added!",
+                text: `${friendUsername} has been added to your friends list.`,
+                icon: "success"
+            });
+            document.getElementById('friend-username').value = '';
+            loadFriends(); // Reload the friends list
+        }
+    } catch (error) {
+        console.error('Error adding friend:', error);
+        Swal.fire({
+            icon: "error",
+            title: "Error",
+            text: "An unexpected error occurred",
+        });
+    }
+}
+
+// Load friends from Supabase
+async function loadFriends() {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const container = document.getElementById('friends-list');
+    container.innerHTML = '<div style="text-align: center;">Loading friends...</div>';
+
+    try {
+        // First get all friendships for the current user
+        const { data: friendships, error: friendshipError } = await supabase
+            .from('friendships')
+            .select('friend_id, user_id')
+            .or(`user_id.eq.${user.id},friend_id.eq.${user.id}`)
+            .eq('status', 'accepted');
+
+        if (friendshipError) {
+            console.error('Error loading friendships:', friendshipError);
+            container.innerHTML = '<div style="text-align: center; color: #dc3545;">Error loading friendships</div>';
+            return;
+        }
+
+        if (!friendships || friendships.length === 0) {
+            container.innerHTML = `
+                <div style="text-align: center; color: #6c757d; margin: 40px 0;">
+                    <p>No friends added yet.</p>
+                    <p>Add friends by their username to track their progress and invite them to rounds!</p>
+                </div>
+            `;
+            return;
+        }
+
+        // Get the friend IDs (excluding current user)
+        const friendIds = friendships.map(f => 
+            f.user_id === user.id ? f.friend_id : f.user_id
+        );
+
+        // Now get the profile data for all friends
+        const { data: friendProfiles, error: profileError } = await supabase
+            .from('profiles')
+            .select('id, username, bio')
+            .in('id', friendIds);
+
+        if (profileError) {
+            console.error('Error loading friend profiles:', profileError);
+            container.innerHTML = '<div style="text-align: center; color: #dc3545;">Error loading friend profiles</div>';
+            return;
+        }
+
+        container.innerHTML = '';
+
+        // Display each friend
+        for (const friend of friendProfiles) {
+            // Get friend's game stats
+            const { data: friendRounds } = await supabase
+                .from('rounds')
+                .select('final_scores')
+                .eq('user_id', friend.id);
+
+            let totalRounds = 0;
+            let avgScore = '-';
+            let bestScore = '-';
+
+            if (friendRounds && friendRounds.length > 0) {
+                // Calculate stats from their rounds
+                const scores = friendRounds
+                    .map(round => {
+                        const finalScores = round.final_scores;
+                        return finalScores && finalScores[friend.username] ? finalScores[friend.username] : null;
+                    })
+                    .filter(score => score != null);
+                
+                if (scores.length > 0) {
+                    totalRounds = scores.length;
+                    avgScore = (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1);
+                    bestScore = Math.min(...scores);
+                }
+            }
+
+            const card = document.createElement('div');
+            card.className = 'friend-card';
+            
+            card.innerHTML = `
+                <div style="font-size: 24px; margin-bottom: 10px;">👤</div>
+                <h4>${friend.username}</h4>
+                <p style="color: #6c757d; margin: 5px 0; font-size: 0.9em;">${friend.bio || 'No bio set'}</p>
+                <p><strong>${totalRounds}</strong> rounds played</p>
+                <p>Avg: <strong>${avgScore}</strong></p>
+                <p>Best: <strong>${bestScore}</strong></p>
+                <button class="btn" style="margin-top: 10px; padding: 8px 15px;" onclick="addFriendToRound('${friend.username}')">Invite to Round</button>
+                <button class="btn" style="margin-top: 5px; padding: 6px 12px; background: #dc3545;" onclick="removeFriend('${friend.id}', '${friend.username}')">Remove</button>
+            `;
+            
+            container.appendChild(card);
+        }
+    } catch (error) {
+        console.error('Error loading friends:', error);
+        container.innerHTML = '<div style="text-align: center; color: #dc3545;">Error loading friends</div>';
+    }
+}
+
+// Remove a friend
+async function removeFriend(friendId, friendUsername) {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const result = await Swal.fire({
+        title: 'Remove Friend?',
+        text: `Are you sure you want to remove ${friendUsername} from your friends list?`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#dc3545',
+        cancelButtonColor: '#6c757d',
+        confirmButtonText: 'Yes, remove'
+    });
+
+    if (result.isConfirmed) {
+        try {
+            const { error } = await supabase
+                .from('friendships')
+                .delete()
+                .or(`and(user_id.eq.${user.id},friend_id.eq.${friendId}),and(user_id.eq.${friendId},friend_id.eq.${user.id})`);
+
+            if (error) {
+                Swal.fire({
+                    icon: "error",
+                    title: "Error",
+                    text: error.message,
+                });
+            } else {
+                Swal.fire({
+                    title: "Friend Removed",
+                    text: `${friendUsername} has been removed from your friends list.`,
+                    icon: "success"
+                });
+                loadFriends(); // Reload the friends list
+            }
+        } catch (error) {
+            console.error('Error removing friend:', error);
+            Swal.fire({
+                icon: "error",
+                title: "Error",
+                text: "An unexpected error occurred",
+            });
+        }
+    }
+}
+
+// Add friend to current round players
+function addFriendToRound(friendUsername) {
+    const playersInput = document.getElementById('players');
+    if (!playersInput) {
+        Swal.fire({
+            icon: "warning",
+            title: "No Active Round",
+            text: "Please go to the Game section to start a new round first.",
+        });
+        return;
+    }
+    
+    const currentPlayers = playersInput.value.split(',').map(p => p.trim()).filter(p => p);
+    
+    if (!currentPlayers.includes(friendUsername)) {
+        currentPlayers.push(friendUsername);
+        playersInput.value = currentPlayers.join(', ');
+        
+        // If there's an active round, update it
+        if (currentRound) {
+            // Add the new player to the current round
+            currentRound.players.push(friendUsername);
+            // Initialize scores for the new player
+            currentRound.scores[friendUsername] = new Array(coursesData.find(c => c.id == currentRound.courseId).holes.length).fill(0);
+            
+            // Recreate the scorecard with the updated players
+            const course = coursesData.find(c => c.id == currentRound.courseId);
+            if (course) {
+                createScorecard(course, currentRound.players);
+                
+                // Update the round in Supabase
+                saveCurrentRoundScores();
+            }
+        }
+        
+        Swal.fire({
+            title: "Friend Added to Round!",
+            text: `${friendUsername} has been added to the players list.`,
+            icon: "success",
+            timer: 2000,
+            showConfirmButton: false
+        });
+    } else {
+        Swal.fire({
+            icon: "info",
+            title: "Already Added",
+            text: `${friendUsername} is already in the players list.`,
+        });
+    }
+}
+
+// Enhanced search function with better UI
+async function searchUsers() {
+    const searchTerm = document.getElementById('friend-username').value.trim();
+    if (!searchTerm || searchTerm.length < 2) {
+        clearSearchResults();
+        return;
+    }
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    try {
+        // Search for users by username (case insensitive)
+        const { data: profiles, error } = await supabase
+            .from('profiles')
+            .select('id, username, bio')
+            .ilike('username', `%${searchTerm}%`)
+            .neq('id', user.id) // Exclude current user
+            .limit(5);
+
+        if (error) {
+            console.error('Error searching users:', error);
+            return;
+        } else {
+            console.log(profiles);
+        }
+
+        let resultsContainer = document.getElementById('user-search-results');
+        if (!resultsContainer) {
+            // Create search results container if it doesn't exist
+            resultsContainer = document.createElement('div');
+            resultsContainer.id = 'user-search-results';
+            document.getElementById('friend-username').parentNode.appendChild(resultsContainer);
+        }
+
+        resultsContainer.innerHTML = '';
+
+        if (profiles && profiles.length > 0) {
+            // Check which users are already friends
+            const profileIds = profiles.map(p => p.id);
+            const { data: existingFriendships } = await supabase
+                .from('friendships')
+                .select('friend_id, user_id')
+                .or(`and(user_id.eq.${user.id},friend_id.in.(${profileIds.join(',')})),and(friend_id.eq.${user.id},user_id.in.(${profileIds.join(',')}))`);
+
+            const friendIds = new Set();
+            if (existingFriendships) {
+                existingFriendships.forEach(f => {
+                    friendIds.add(f.user_id === user.id ? f.friend_id : f.user_id);
+                });
+            }
+
+            profiles.forEach(profile => {
+                const resultItem = document.createElement('div');
+                resultItem.className = 'search-result-item';
+                
+                const isAlreadyFriend = friendIds.has(profile.id);
+                
+                resultItem.innerHTML = `
+                    <div>
+                        <strong>${profile.username}</strong>
+                        <div style="font-size: 0.9em; color: #6c757d;">${profile.bio || 'No bio'}</div>
+                    </div>
+                    <div>
+                        ${isAlreadyFriend 
+                            ? '<span style="color: #28a745; font-weight: bold;">✓ Friends</span>'
+                            : `<button class="btn" onclick="sendFriendRequest('${profile.id}', '${profile.username}')" 
+                                      style="padding: 5px 10px; font-size: 0.9em;">Add Friend</button>`
+                        }
+                    </div>
+                `;
+                
+                resultsContainer.appendChild(resultItem);
+            });
+        } else {
+            resultsContainer.innerHTML = '<div style="text-align: center; color: #6c757d; padding: 10px;">No users found matching "' + searchTerm + '"</div>';
+        }
+    } catch (error) {
+        console.error('Error searching users:', error);
+    }
+}
+
+// Send friend request (simplified - auto-accept for now)
+async function sendFriendRequest(friendId, friendUsername) {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    try {
+        // Check if friendship already exists
+        const { data: existingFriendship } = await supabase
+            .from('friendships')
+            .select('id')
+            .or(`and(user_id.eq.${user.id},friend_id.eq.${friendId}),and(user_id.eq.${friendId},friend_id.eq.${user.id})`)
+            .single();
+
+        if (existingFriendship) {
+            Swal.fire({
+                icon: "info",
+                title: "Already Friends",
+                text: `You are already friends with ${friendUsername}!`,
+            });
+            return;
+        }
+
+        // Add the friendship (auto-accept for simplicity)
+        const { error } = await supabase
+            .from('friendships')
+            .insert({
+                user_id: user.id,
+                friend_id: friendId,
+                status: 'accepted',
+                created_at: new Date()
+            });
+
+        if (error) {
+            Swal.fire({
+                icon: "error",
+                title: "Error Adding Friend",
+                text: error.message,
+            });
+        } else {
+            Swal.fire({
+                title: "Friend Added!",
+                text: `${friendUsername} has been added to your friends list.`,
+                icon: "success"
+            });
+            document.getElementById('friend-username').value = '';
+            document.getElementById('user-search-results').innerHTML = '';
+            loadFriends(); // Reload the friends list
+        }
+    } catch (error) {
+        console.error('Error sending friend request:', error);
+        Swal.fire({
+            icon: "error",
+            title: "Error",
+            text: "An unexpected error occurred",
+        });
+    }
+}
+// Clear search results
+function clearSearchResults() {
+    const resultsContainer = document.getElementById('user-search-results');
+    if (resultsContainer) {
+        resultsContainer.innerHTML = '';
+    }
+}
+
 // Navigation
 function showSection(sectionId) {
     document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
@@ -174,36 +616,111 @@ function showSection(sectionId) {
     if (sectionId === 'friends') loadFriends();
 }
 
-// Start a new round
-function startRound() {
+async function startRound() {
     const courseId = document.getElementById('course').value;
     const playersText = document.getElementById('players').value;
     
     if (!courseId || !playersText) {
-        alert('Please select a course and enter players');
+        Swal.fire({
+            icon: "warning",
+            title: "Missing Information",
+            text: "Please select a course and enter players",
+        });
         return;
     }
     
-    const course = courses[courseId];
-
-    const players = playersText.split(',').map(p => p.trim());
-
-    gameData.currentRound = {
-        courseId: courseId,
-        courseName: course.name,
-        players: players,
-        scores: {},
-        date: new Date().toLocaleDateString()
-    };
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
     
-    // Initialize scores
+    // Get current user's username
+    const { data: profile } = await supabase
+        .from('profiles')
+        .select('username')
+        .eq('id', user.id)
+        .single();
+
+    const currentUsername = profile?.username || user.email;
+    
+    // Find the selected course
+    const course = coursesData.find(c => c.id == courseId);
+    if (!course) {
+        Swal.fire({
+            icon: "error",
+            title: "Course Not Found",
+            text: "Selected course could not be found",
+        });
+        return;
+    }
+
+    let players = playersText.split(',').map(p => p.trim()).filter(p => p);
+    
+    // Replace "You" with actual username
+    players = players.map(player => 
+        player.toLowerCase() === 'you' ? currentUsername : player
+    );
+
+    // Initialize scores object
+    const initialScores = {};
     players.forEach(player => {
-        gameData.currentRound.scores[player] = new Array(course.holes).fill('');
+        initialScores[player] = new Array(course.holes.length).fill(0);
     });
-    
-    createScorecard(course, players);
-    document.getElementById('current-course').textContent = course.name;
-    document.getElementById('scorecard').style.display = 'block';
+
+    try {
+        // Save the round to Supabase as "in_progress"
+        const { data: newRound, error } = await supabase
+            .from('rounds')
+            .insert({
+                user_id: user.id,
+                course_id: parseInt(courseId),
+                course_name: course.name,
+                players: players, // Now contains actual usernames
+                scores: initialScores,
+                date: new Date().toLocaleDateString(),
+                status: 'in_progress'
+            })
+            .select()
+            .single();
+
+        if (error) {
+            console.error('Error creating round:', error);
+            Swal.fire({
+                icon: "error",
+                title: "Error Creating Round",
+                text: error.message,
+            });
+            return;
+        }
+
+        // Set current round
+        currentRound = {
+            id: newRound.id,
+            courseId: courseId,
+            courseName: course.name,
+            players: players, // Use actual usernames
+            scores: initialScores,
+            date: new Date().toLocaleDateString()
+        };
+        
+        createScorecard(course, players);
+        document.getElementById('current-course').textContent = course.name;
+        document.getElementById('scorecard').style.display = 'block';
+
+        Swal.fire({
+            title: "Round Started!",
+            text: `Started new round at ${course.name}`,
+            icon: "success",
+            timer: 2000,
+            showConfirmButton: false
+        });
+
+    } catch (error) {
+        console.error('Error starting round:', error);
+        Swal.fire({
+            icon: "error",
+            title: "Error",
+            text: "Failed to start round. Please try again.",
+        });
+    }
 }
 
 // Create scorecard
@@ -223,24 +740,31 @@ function createScorecard(course, players) {
     // Hole rows
     for (let hole = 1; hole <= course.holes.length; hole++) {
         const par = course.holes[hole - 1]; // Get par for the current hole
-        const distance = course.distance[hole - 1];
+        const distance = course.distances[hole - 1];
         const row = document.createElement('div');
         row.className = 'hole-row';
         
-        let rowHTML = `<div class="hole-number">${hole} (${distance})</div>`;
+        let rowHTML = `<div class="hole-number">${hole} (${distance}m)</div>`;
         
         players.forEach(player => {
-            const currentScore = gameData.currentRound.scores[player][hole - 1];
+            // Get current score from currentRound instead of gameData
+            const currentScore = currentRound && currentRound.scores[player] ? 
+                currentRound.scores[player][hole - 1] : 0;
+            const displayScore = currentScore > 0 ? currentScore : '';
+            
             rowHTML += `
-                <div class="score-control flex items-center">
-                    <button class="score-decrease" onclick="updateScore('${player}', ${hole-1}, -1)">-</button>
-                    <span class="score-display" id="score-${player}-${hole-1}">${currentScore}</span>
-                    <button class="score-increase" onclick="updateScore('${player}', ${hole-1}, 1)">+</button>
+                <div class="score-control" style="display: flex; align-items: center; justify-content: center; gap: 5px;">
+                    <button class="score-decrease" onclick="updateScore('${player}', ${hole-1}, -1)" 
+                            style="width: 25px; height: 25px; border: none; background: #dc3545; color: white; border-radius: 3px; cursor: pointer;">-</button>
+                    <span class="score-display" id="score-${player}-${hole-1}" 
+                          style="min-width: 30px; text-align: center; font-weight: bold; font-size: 16px;">${displayScore}</span>
+                    <button class="score-increase" onclick="updateScore('${player}', ${hole-1}, 1)" 
+                            style="width: 25px; height: 25px; border: none; background: #28a745; color: white; border-radius: 3px; cursor: pointer;">+</button>
                 </div>
             `;
         });
         
-        rowHTML += `<div style="text-align: center; font-weight: bold;">${par}</div>`;
+        rowHTML += `<div style="text-align: center; font-weight: bold; color: #666;">${par}</div>`;
         row.innerHTML = rowHTML;
         container.appendChild(row);
     }
@@ -265,47 +789,77 @@ function createScorecard(course, players) {
     updateTotals();
 }
 
-function updateScore(player, holeIndex, change) {
-    if (!gameData.currentRound || !gameData.currentRound.scores[player]) return;
+async function updateScore(player, holeIndex, change) {
+    if (!currentRound || !currentRound.scores[player]) return;
 
-    const course = courses[gameData.currentRound.courseId];
+    // Find the course to get par information
+    const course = coursesData.find(c => c.id == currentRound.courseId);
+    if (!course) return;
+    
     const par = course.holes[holeIndex];
 
-    // Get current score, default to undefined if not set
-    let currentScore = gameData.currentRound.scores[player][holeIndex];
+    // Get current score
+    let currentScore = currentRound.scores[player][holeIndex];
 
     // Calculate new score
     let newScore;
-    if (currentScore == 0) {
-        // If score is uninitialized, set to par + change (e.g., par + 1 for "+", par - 1 for "-")
+    if (currentScore === 0 || currentScore === '') {
+        // If score is uninitialized, set to par + change
         newScore = par + change;
     } else {
-        // Otherwise, increment/decrement normally, ensuring currentScore is a number
-        currentScore = +currentScore;
-        newScore = currentScore + change;
+        // Otherwise, increment/decrement normally
+        newScore = parseInt(currentScore) + change;
     }
 
-    // Ensure score stays within reasonable bounds (e.g., 1 to 10)
+    // Ensure score stays within reasonable bounds
     if (newScore < 1) newScore = 1;
     if (newScore > 10) newScore = 10;
 
-    // Store the new score
-    gameData.currentRound.scores[player][holeIndex] = newScore;
+    // Update local state
+    currentRound.scores[player][holeIndex] = newScore;
 
     // Update display
     document.getElementById(`score-${player}-${holeIndex}`).textContent = newScore;
 
     // Update totals
     updateTotals();
+
+    // Save to Supabase (debounced to avoid too many requests)
+    await saveCurrentRoundScores();
 }
 
-// Update totals
+// Save current round scores to Supabase
+let saveTimeout;
+async function saveCurrentRoundScores() {
+    if (!currentRound) return;
+
+    // Debounce saves to avoid too many requests
+    clearTimeout(saveTimeout);
+    saveTimeout = setTimeout(async () => {
+        try {
+            const { error } = await supabase
+                .from('rounds')
+                .update({
+                    scores: currentRound.scores,
+                    updated_at: new Date()
+                })
+                .eq('id', currentRound.id);
+
+            if (error) {
+                console.error('Error saving scores:', error);
+            }
+        } catch (error) {
+            console.error('Error saving round scores:', error);
+        }
+    }, 1000); // Save after 1 second of no changes
+}
+
 function updateTotals() {
-    if (!gameData.currentRound) return;
+    if (!currentRound) return;
     
-    Object.keys(gameData.currentRound.scores).forEach(player => {
-        const scores = gameData.currentRound.scores[player];
-        const total = scores.reduce((sum, score) => sum + (score || 0), 0);
+    Object.keys(currentRound.scores).forEach(player => {
+        const scores = currentRound.scores[player];
+        const total = scores.reduce((sum, score) => sum + (parseInt(score) || 0), 0);
         const totalElement = document.getElementById(`total-${player.replace(/\s+/g, '-')}`);
         if (totalElement) {
             totalElement.textContent = total || '-';
@@ -368,228 +922,215 @@ async function loadGameData() {
 }
 
 async function finishRound() {
-    if (!gameData.currentRound || !auth.currentUser) return;
+    if (!currentRound) return;
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
 
     try {
         // Calculate final scores
-        const finalRound = {
-            ...gameData.currentRound,
-            id: Date.now().toString(),
-            userId: auth.currentUser.uid,
-            timestamp: new Date(),
-            finalScores: {}
-        };
-
-        Object.keys(finalRound.scores).forEach(player => {
-            const scores = finalRound.scores[player];
-            finalRound.finalScores[player] = scores.reduce((sum, score) => sum + (score || 0), 0);
+        const finalScores = {};
+        Object.keys(currentRound.scores).forEach(player => {
+            const scores = currentRound.scores[player];
+            finalScores[player] = scores.reduce((sum, score) => sum + (parseInt(score) || 0), 0);
         });
 
-        // Save to Firestore
-        await saveRound(finalRound);
-        
-        // Update local data
-        gameData.rounds.push(finalRound);
-        gameData.currentRound = null;
-        
-        // Update user stats
-        await updateUserStats();
+        // Update the round in Supabase with final scores and completed status
+        const { error } = await supabase
+            .from('rounds')
+            .update({
+                final_scores: finalScores,
+                status: 'completed',
+                players: currentRound.players,
+                updated_at: new Date()
+            })
+            .eq('id', currentRound.id);
 
-        alert('Round completed and saved!');
+        if (error) {
+            throw error;
+        }
+
+        // Clear current round
+        currentRound = null;
+
+        Swal.fire({
+            title: "Round Completed!",
+            text: 'Your round has been saved successfully.',
+            icon: "success"
+        });
+        
         document.getElementById('scorecard').style.display = 'none';
         document.getElementById('course').value = '';
-        document.getElementById('players').value = auth.currentUser.displayName;
+        document.getElementById('players').value = '';
+        
+        // Refresh history if we're on that tab
+        const historySection = document.getElementById('history');
+        if (historySection && historySection.classList.contains('active')) {
+            loadHistory();
+        }
         
     } catch (error) {
         console.error('Error finishing round:', error);
-        alert('Failed to save round. Please try again.');
+        Swal.fire({
+            icon: "error",
+            title: "Error",
+            text: 'Failed to complete round. Please try again.',
+        });
     }
 }
 
 async function loadHistory() {
-    // Load gameData from data.json (simulated via localStorage)
-    await loadGameData();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
 
     const container = document.getElementById('history-list');
-    container.innerHTML = '';
+    container.innerHTML = '<div style="text-align: center;">Loading history...</div>';
 
-    if (gameData.rounds.length === 0) {
-        container.innerHTML = '<p style="text-align: center; color: #6c757d; margin: 40px 0;">No rounds played yet. Start your first round!</p>';
-        return;
-    }
+    try {
+        const { data: rounds, error } = await supabase
+            .from('rounds')
+            .select('*')
+            .eq('user_id', user.id)
+            .eq('status', 'completed')
+            .order('created_at', { ascending: false });
 
-    gameData.rounds.slice().reverse().forEach(round => {
-        const item = document.createElement('div');
-        item.className = 'history-item';
+        if (error) {
+            console.error('Error loading history:', error);
+            container.innerHTML = '<div style="text-align: center; color: #dc3545;">Error loading history</div>';
+            return;
+        }
 
-        const playerScores = Object.entries(round.finalScores)
-            .map(([player, score]) => `${player}: ${score}`)
-            .join(' | ');
+        container.innerHTML = '';
 
-        const course = courses[round.courseId];
-        const par = course.holes.reduce((a, b) => a + b, 0);
-        const yourScore = round.finalScores['You'] || 0;
-        const scoreDiff = yourScore - par;
-        const scoreDiffText = scoreDiff > 0 ? `+${scoreDiff}` : scoreDiff.toString();
+        if (!rounds || rounds.length === 0) {
+            container.innerHTML = '<p style="text-align: center; color: #6c757d; margin: 40px 0;">No rounds completed yet. Finish your first round!</p>';
+            return;
+        }
 
-        item.innerHTML = `
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                <h4>${round.courseName}</h4>
-                <span style="color: #6c757d;">${round.date}</span>
-            </div>
-            <p><strong>Scores:</strong> ${playerScores}</p>
-            <p><strong>Your Performance:</strong> ${yourScore} (${scoreDiffText} vs par)</p>
-        `;
+        // Get current user's profile for score comparison
+        const { data: profile } = await supabase
+            .from('profiles')
+            .select('username')
+            .eq('id', user.id)
+            .single();
 
-        container.appendChild(item);
-    });
-}
-// Update progress stats
-function updateProgress() {
-    const yourRounds = gameData.rounds.filter(round => round.finalScores['You']);
-    
-    document.getElementById('total-rounds').textContent = yourRounds.length;
-    
-    if (yourRounds.length > 0) {
-        const scores = yourRounds.map(round => round.finalScores['You']);
-        const avgScore = (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1);
-        const bestScore = Math.min(...scores);
-        
-        document.getElementById('avg-score').textContent = avgScore;
-        document.getElementById('best-score').textContent = bestScore;
-        
-        // Last 5 rounds average
-        const last5 = scores.slice(-5);
-        if (last5.length >= 2) {
-            const last5Avg = (last5.reduce((a, b) => a + b, 0) / last5.length).toFixed(1);
-            document.getElementById('improvement').textContent = last5Avg;
+        const currentUsername = profile?.username;
+
+        rounds.forEach(round => {
+            const item = document.createElement('div');
+            item.className = 'history-item';
+
+            const playerScores = Object.entries(round.final_scores || {})
+                .map(([player, score]) => `${player}: ${score}`)
+                .join(' | ');
+
+            // Find course data for par calculation
+            const course = coursesData.find(c => c.id == round.course_id);
+            const par = course ? course.holes.reduce((a, b) => a + b, 0) : 0;
             
-            // Simple improvement indicator
-            if (last5.length >= 5) {
-                const first5Avg = scores.slice(0, 5).reduce((a, b) => a + b, 0) / 5;
-                if (parseFloat(last5Avg) < first5Avg) {
-                    document.getElementById('improvement').innerHTML = 
-                        last5Avg + ' <span class="improvement-badge">Improving!</span>';
+            // Get current user's score
+            const yourScore = round.final_scores?.[currentUsername] || 0;
+            const scoreDiff = yourScore - par;
+            const scoreDiffText = scoreDiff > 0 ? `+${scoreDiff}` : scoreDiff === 0 ? 'E' : scoreDiff.toString();
+
+            item.innerHTML = `
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                    <h4>${round.course_name}</h4>
+                    <span style="color: #6c757d;">${round.date}</span>
+                </div>
+                <p><strong>Players:</strong> ${round.players.join(', ')}</p>
+                <p><strong>Scores:</strong> ${playerScores}</p>
+                ${currentUsername && yourScore > 0 ? `<p><strong>Your Performance:</strong> ${yourScore} (${scoreDiffText} vs par ${par})</p>` : ''}
+                <div style="margin-top: 10px;">
+                    <button class="btn" onclick="viewRoundDetails('${round.id}')" style="padding: 5px 10px; font-size: 0.9em; margin-right: 10px;">View Details</button>
+                    <button class="btn" onclick="deleteRound('${round.id}')" style="padding: 5px 10px; font-size: 0.9em; background: #dc3545;">Delete</button>
+                </div>
+            `;
+
+            container.appendChild(item);
+        });
+    } catch (error) {
+        console.error('Error loading history:', error);
+        container.innerHTML = '<div style="text-align: center; color: #dc3545;">Error loading history</div>';
+    }
+}
+
+async function updateProgress() {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    try {
+        // Get current user's profile
+        const { data: profile } = await supabase
+            .from('profiles')
+            .select('username')
+            .eq('id', user.id)
+            .single();
+
+        const currentUsername = profile?.username;
+
+        // Load completed rounds
+        const { data: rounds, error } = await supabase
+            .from('rounds')
+            .select('final_scores, course_id, created_at')
+            .eq('user_id', user.id)
+            .eq('status', 'completed')
+            .order('created_at', { ascending: true });
+
+        if (error) {
+            console.error('Error loading progress data:', error);
+            return;
+        }
+
+        // Filter rounds where user actually played
+        const yourRounds = rounds.filter(round => 
+            round.final_scores && round.final_scores[currentUsername]
+        );
+        
+        document.getElementById('total-rounds').textContent = yourRounds.length;
+        
+        if (yourRounds.length > 0) {
+            const scores = yourRounds.map(round => round.final_scores[currentUsername]);
+            const avgScore = (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1);
+            const bestScore = Math.min(...scores);
+            
+            document.getElementById('avg-score').textContent = avgScore;
+            document.getElementById('best-score').textContent = bestScore;
+            
+            // Last 5 rounds average
+            const last5 = scores.slice(-5);
+            if (last5.length >= 2) {
+                const last5Avg = (last5.reduce((a, b) => a + b, 0) / last5.length).toFixed(1);
+                document.getElementById('improvement').textContent = last5Avg;
+                
+                // Simple improvement indicator
+                if (last5.length >= 5 && yourRounds.length >= 10) {
+                    const first5Avg = scores.slice(0, 5).reduce((a, b) => a + b, 0) / 5;
+                    if (parseFloat(last5Avg) < first5Avg) {
+                        document.getElementById('improvement').innerHTML = 
+                            last5Avg + ' <span style="color: #28a745; font-weight: bold;">📈 Improving!</span>';
+                    }
                 }
+            } else {
+                document.getElementById('improvement').textContent = 'Need more rounds';
             }
         } else {
-            document.getElementById('improvement').textContent = 'Need more rounds';
-        }
-    }
-    
-    // Update chart placeholder with basic trend info
-    const chartEl = document.getElementById('score-chart');
-    if (yourRounds.length >= 3) {
-        const recent = yourRounds.slice(-3).map(r => r.finalScores['You']);
-        const trend = recent[2] < recent[0] ? '📈 Improving trend!' : 
-                    recent[2] > recent[0] ? '📉 Work on consistency' : '➡️ Steady performance';
-        chartEl.innerHTML = `<div style="text-align: center;"><div style="font-size: 24px; margin-bottom: 10px;">${trend}</div><div>Last 3 scores: ${recent.join(', ')}</div></div>`;
-    }
-}
-
-// Load friends
-function loadFriends() {
-    const container = document.getElementById('friends-list');
-    container.innerHTML = '';
-    
-    gameData.friends.forEach(friend => {
-        const card = document.createElement('div');
-        card.className = 'friend-card';
-        
-        const statusColor = friend.status === 'online' ? '#28a745' : '#6c757d';
-        
-        card.innerHTML = `
-            <div style="font-size: 24px; margin-bottom: 10px;">👤</div>
-            <h4>${friend.username}</h4>
-            <p style="color: ${statusColor}; margin: 5px 0;">● ${friend.status}</p>
-            <p><strong>${friend.totalRounds}</strong> rounds</p>
-            <p>Avg: <strong>${friend.avgScore}</strong></p>
-            <button class="btn" style="margin-top: 10px; padding: 8px 15px; onclick="addFriendToRound('${friend.username}')">Invite to Round</button>
-        `;
-        
-        container.appendChild(card);
-    });
-}
-
-async function addFriend() {
-    const username = document.getElementById('friend-username').value.trim();
-    if (!username || !auth.currentUser) return;
-    
-    try {
-        // In a real app, you'd search for the user by username
-        // For now, create a friend request
-        const userRef = doc(db, 'users', auth.currentUser.uid);
-        const friendData = {
-            username: username,
-            status: 'pending',
-            addedAt: new Date()
-        };
-        
-        await updateDoc(userRef, {
-            friends: arrayUnion(friendData)
-        });
-        
-        gameData.friends.push(friendData);
-        document.getElementById('friend-username').value = '';
-        loadFriends();
-        alert(`Friend request sent to ${username}!`);
-        
-    } catch (error) {
-        console.error('Error adding friend:', error);
-        alert('Failed to add friend.');
-    }
-}
-
-// NEW: Load friends from Firestore
-async function loadFriendsFromFirestore() {
-    if (!auth.currentUser) return;
-    
-    try {
-        const userRef = doc(db, 'users', auth.currentUser.uid);
-        const userSnap = await getDoc(userRef);
-        
-        if (userSnap.exists() && userSnap.data().friends) {
-            gameData.friends = userSnap.data().friends;
-        } else {
-            gameData.friends = [];
+            document.getElementById('avg-score').textContent = '-';
+            document.getElementById('best-score').textContent = '-';
+            document.getElementById('improvement').textContent = 'No rounds yet';
         }
         
-        loadFriends(); // Update UI
+        // Update chart placeholder with basic trend info
+        const chartEl = document.getElementById('score-chart');
+        if (chartEl && yourRounds.length >= 3) {
+            const recent = yourRounds.slice(-3).map(r => r.final_scores[currentUsername]);
+            const trend = recent[2] < recent[0] ? '📈 Improving trend!' : 
+                        recent[2] > recent[0] ? '📉 Work on consistency' : '➡️ Steady performance';
+            chartEl.innerHTML = `<div style="text-align: center;"><div style="font-size: 24px; margin-bottom: 10px;">${trend}</div><div>Last 3 scores: ${recent.join(', ')}</div></div>`;
+        }
     } catch (error) {
-        console.error('Error loading friends:', error);
+        console.error('Error updating progress:', error);
     }
-}
-
-function addFriendToRound(friendUsername) {
-    if (!gameData.currentRound) {
-        alert('Please start a round first!');
-        return;
-    }
-
-    // Check if friend exists
-    const friend = gameData.friends.find(f => f.username === friendUsername);
-    if (!friend) {
-        alert('Friend not found!');
-        return;
-    }
-
-    if (gameData.currentRound.players.includes(friendUsername)) {
-        alert("This friend is already in the current round!");
-        return;
-    }
-
-    const course = courses[gameData.currentRound.courseId];
-    gameData.currentRound.players.push(friendUsername);
-    gameData.currentRound.scores[friendUsername] = new Array(course.holes).fill('');
-
-    // Update scorecard
-    createScorecard(course, gameData.currentRound.players);
-
-    // Switch to scorecard view
-    showSection('scorecard');
-
-    // Update totals
-    updateTotals();
 }
 
 async function updateUserStats() {
@@ -619,6 +1160,188 @@ async function updateUserStats() {
     }
 }
 
+// Load current round if one exists
+async function loadCurrentRound() {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    try {
+        // Check if there's an in-progress round
+        const { data: inProgressRound, error } = await supabase
+            .from('rounds')
+            .select('*')
+            .eq('user_id', user.id)
+            .eq('status', 'in_progress')
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .single();
+
+        if (error && error.code !== 'PGRST116') { // PGRST116 is "no rows returned"
+            console.error('Error loading current round:', error);
+            return;
+        }
+
+        if (inProgressRound) {
+            // Restore the current round
+            const course = coursesData.find(c => c.id == inProgressRound.course_id);
+            if (course) {
+                currentRound = {
+                    id: inProgressRound.id,
+                    courseId: inProgressRound.course_id,
+                    courseName: inProgressRound.course_name,
+                    players: inProgressRound.players,
+                    scores: inProgressRound.scores,
+                    date: inProgressRound.date
+                };
+
+                createScorecard(course, inProgressRound.players);
+                document.getElementById('current-course').textContent = course.name;
+                document.getElementById('scorecard').style.display = 'block';
+
+                // Restore scores to the UI
+                Object.keys(currentRound.scores).forEach(player => {
+                    currentRound.scores[player].forEach((score, holeIndex) => {
+                        if (score && score > 0) {
+                            const scoreElement = document.getElementById(`score-${player}-${holeIndex}`);
+                            if (scoreElement) {
+                                scoreElement.textContent = score;
+                            }
+                        }
+                    });
+                });
+
+                updateTotals();
+
+                Swal.fire({
+                    title: "Round Resumed",
+                    text: `Continuing your round at ${course.name}`,
+                    icon: "info",
+                    timer: 3000
+                });
+            }
+        }
+    } catch (error) {
+        console.error('Error loading current round:', error);
+    }
+}
+
+async function viewRoundDetails(roundId) {
+    try {
+        const { data: round, error } = await supabase
+            .from('rounds')
+            .select('*')
+            .eq('id', roundId)
+            .single();
+
+        if (error || !round) {
+            Swal.fire({
+                icon: "error",
+                title: "Error",
+                text: "Could not load round details",
+            });
+            return;
+        }
+
+        // Create detailed view
+        let detailsHTML = `
+            <div style="text-align: left;">
+                <h3>${round.course_name}</h3>
+                <p><strong>Date:</strong> ${round.date}</p>
+                <p><strong>Players:</strong> ${round.players.join(', ')}</p>
+                <br>
+                <h4>Hole-by-hole scores:</h4>
+        `;
+
+        // Find course to get par info
+        const course = coursesData.find(c => c.id == round.course_id);
+        
+        if (course) {
+            detailsHTML += '<table style="width: 100%; border-collapse: collapse; margin: 10px 0;">';
+            detailsHTML += '<tr style="background: #f8f9fa;"><th style="border: 1px solid #ddd; padding: 8px;">Hole</th>';
+            
+            round.players.forEach(player => {
+                detailsHTML += `<th style="border: 1px solid #ddd; padding: 8px;">${player}</th>`;
+            });
+            detailsHTML += '<th style="border: 1px solid #ddd; padding: 8px;">Par</th></tr>';
+
+            for (let i = 0; i < course.holes.length; i++) {
+                detailsHTML += `<tr><td style="border: 1px solid #ddd; padding: 8px; text-align: center;">${i + 1}</td>`;
+                
+                round.players.forEach(player => {
+                    const score = round.scores[player][i] || '-';
+                    detailsHTML += `<td style="border: 1px solid #ddd; padding: 8px; text-align: center;">${score}</td>`;
+                });
+                
+                detailsHTML += `<td style="border: 1px solid #ddd; padding: 8px; text-align: center; font-weight: bold;">${course.holes[i]}</td></tr>`;
+            }
+
+            detailsHTML += '<tr style="background: #e9ecef; font-weight: bold;"><td style="border: 1px solid #ddd; padding: 8px;">Total</td>';
+            round.players.forEach(player => {
+                const total = round.final_scores?.[player] || '-';
+                detailsHTML += `<td style="border: 1px solid #ddd; padding: 8px; text-align: center;">${total}</td>`;
+            });
+            const totalPar = course.holes.reduce((a, b) => a + b, 0);
+            detailsHTML += `<td style="border: 1px solid #ddd; padding: 8px; text-align: center;">${totalPar}</td></tr>`;
+            detailsHTML += '</table>';
+        }
+
+        detailsHTML += '</div>';
+
+        Swal.fire({
+            title: "Round Details",
+            html: detailsHTML,
+            width: '80%',
+            showCloseButton: true
+        });
+
+    } catch (error) {
+        console.error('Error viewing round details:', error);
+    }
+}
+
+async function deleteRound(roundId) {
+    const result = await Swal.fire({
+        title: 'Delete Round?',
+        text: 'This action cannot be undone!',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#dc3545',
+        cancelButtonColor: '#6c757d',
+        confirmButtonText: 'Yes, delete it!'
+    });
+
+    if (result.isConfirmed) {
+        try {
+            const { error } = await supabase
+                .from('rounds')
+                .delete()
+                .eq('id', roundId);
+
+            if (error) {
+                throw error;
+            }
+
+            Swal.fire({
+                title: "Deleted!",
+                text: "Round has been deleted.",
+                icon: "success",
+                timer: 2000
+            });
+
+            // Reload history
+            loadHistory();
+
+        } catch (error) {
+            console.error('Error deleting round:', error);
+            Swal.fire({
+                icon: "error",
+                title: "Error",
+                text: "Failed to delete round.",
+            });
+        }
+    }
+}
+
 // Add this new function to your script.js file
 function loginSuccessful() {
     document.getElementById('login-screen').style.display = 'none';
@@ -638,14 +1361,30 @@ window.signUp = signUp;
 window.signIn = signIn;
 window.saveProfile = saveProfile;
 
+// Add these to your window exports
+window.searchUsers = searchUsers;
+window.clearSearchResults = clearSearchResults;
+window.sendFriendRequest = sendFriendRequest;
+window.removeFriend = removeFriend;
+window.addFriendToRound = addFriendToRound;
+
+window.startRound = startRound;
+window.updateScore = updateScore;
+window.finishRound = finishRound;
+window.viewRoundDetails = viewRoundDetails;
+window.deleteRound = deleteRound;
+window.updateProgress = updateProgress;
+window.loadHistory = loadHistory;
+
 // Run on page load
 window.addEventListener("DOMContentLoaded", async () => {
   const { data: { session } } = await supabase.auth.getSession();
   if (session) {
     console.log("Restored session:", session.user.email);
     loginSuccessful();
-    loadProfile();
-    loadCourses();
+    await loadProfile();
+    await loadCourses();
+    await loadCurrentRound();
   } else {
     console.log("User is not logged in");
   }

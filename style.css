@@ -144,6 +144,7 @@ label {
 
 input, select, textarea {
     width: 100%;
+    margin-bottom: 10px;
     padding: 12px 15px;
     border: 2px solid #e9ecef;
     border-radius: 10px;
@@ -155,6 +156,10 @@ input:focus, select:focus, textarea:focus {
     outline: none;
     border-color: #667eea;
     box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+#login-password {
+    margin-bottom: 20px;
 }
 
 .btn {
@@ -269,6 +274,55 @@ input:focus, select:focus, textarea:focus {
 .friend-card:hover {
     transform: translateY(-5px);
     border-color: #667eea;
+}
+
+.friend-card h4 {
+    margin: 5px 0;
+    color: #333;
+}
+
+.friend-card .btn {
+    margin: 2px;
+    font-size: 0.9em;
+}
+
+.search-result-item {
+    padding: 10px;
+    border: 1px solid #ddd;
+    margin: 5px 0;
+    border-radius: 5px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #f8f9fa;
+    transition: background-color 0.2s ease;
+}
+
+.search-result-item:hover {
+    background: #e9ecef;
+}
+
+.search-result-item .btn {
+    padding: 5px 10px;
+    font-size: 0.9em;
+}
+
+#user-search-results {
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.friend-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 15px;
+    margin-top: 15px;
+}
+
+@media (max-width: 768px) {
+    .friend-list {
+        grid-template-columns: 1fr;
+    }
 }
 
 .progress-section {
