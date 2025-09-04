@@ -241,6 +241,32 @@
         padding: 8px 12px;
         flex-shrink: 0;
     }
+
+    .hole-dot {
+        min-width: 32px;
+        min-height: 32px;
+    }
+    
+    #hole-dots {
+        flex-wrap: wrap;
+        max-width: 100%;
+        justify-content: center;
+    }
+    
+    .players-area .bg-white {
+        margin-bottom: 12px;
+    }
+    
+    /* Make score buttons more touch-friendly */
+    .players-area button {
+        min-width: 44px;
+        min-height: 44px;
+    }
+    
+    /* Ensure proper spacing on small screens */
+    #totals-grid {
+        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)) !important;
+    }
 }
 
 /* Landscape orientation adjustments for mobile */

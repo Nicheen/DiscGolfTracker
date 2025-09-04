@@ -9,6 +9,8 @@ const supabase = createClient(supabaseUrl, supabaseKey, {
   }
 });
 
+let selectedProfilePicture = null;
+let profilePictureCache = {};
 let coursesData = [];
 let currentRound = null;
 
@@ -77,61 +79,6 @@ async function signOut() {
 }
 
 // Load profile data when logged in
-async function loadProfile() {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-        Swal.fire({
-            icon: "error",
-            title: "You must login first!",
-            text: error.message,
-        });
-        return;
-    }
-
-    // Fill in email field
-    document.getElementById("profile-email").value = user.email;
-
-    // Load profile from DB
-    const { data, error } = await supabase
-        .from("profiles")
-        .select("username, bio")
-        .eq("id", user.id)
-        .single();
-
-    if (data) {
-        document.getElementById("profile-username").value = data.username || "";
-        document.getElementById("user-name").innerHTML = data.username || "";
-        document.getElementById("profile-bio").value = data.bio || "";
-    }
-}
-
-async function saveProfile() {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return;
-
-  const username = document.getElementById("profile-username").value;
-  const bio = document.getElementById("profile-bio").value;
-
-  const { error } = await supabase.from("profiles").upsert({
-    id: user.id,
-    username,
-    bio,
-    updated_at: new Date()
-  });
-
-  if (error) {
-    Swal.fire({
-        icon: "error",
-        title: "Error Saving Profile",
-        text: error.message,
-    });
-  } else {
-    Swal.fire({
-        title: "Profile Saved!",
-        icon: "success"
-    });
-  }
-}
 
 async function loadCourses() {
     // Load profile from DB
@@ -297,7 +244,7 @@ async function loadFriends() {
         // Now get the profile data for all friends
         const { data: friendProfiles, error: profileError } = await supabase
             .from('profiles')
-            .select('id, username, bio')
+            .select('id, username, bio, profile_picture_base64')
             .in('id', friendIds);
 
         if (profileError) {
@@ -339,8 +286,13 @@ async function loadFriends() {
             const card = document.createElement('div');
             card.className = 'friend-card';
             
+            // Update the card creation:
+            const profilePicSrc = friend.profile_picture_base64 || "./images/user.png";
             card.innerHTML = `
-                <div style="font-size: 24px; margin-bottom: 10px;">👤</div>
+                <div style="margin-bottom: 10px;">
+                    <img src="${profilePicSrc}" alt="${friend.username}" 
+                        style="width: 60px; height: 60px; border-radius: 50%; border: 3px solid #667eea; object-fit: cover;">
+                </div>
                 <h4>${friend.username}</h4>
                 <p style="color: #6c757d; margin: 5px 0; font-size: 0.9em;">${friend.bio || 'No bio set'}</p>
                 <p><strong>${totalRounds}</strong> rounds played</p>
@@ -614,6 +566,7 @@ function showSection(sectionId) {
     if (sectionId === 'progress') updateProgress();
     if (sectionId === 'friends') loadFriends();
 }
+
 async function startRound() {
     const courseId = document.getElementById('course').value;
     const playersText = document.getElementById('players').value;
@@ -721,66 +674,215 @@ async function startRound() {
     }
 }
 
-// Create scorecard
+// Create scorecard with hole-by-hole view
 function createScorecard(course, players) {
     const container = document.getElementById('scorecard-content');
     container.innerHTML = '';
-    container.className = 'space-y-2';
+    container.className = 'space-y-4';
     
-    // Header row
-    const headerRow = document.createElement('div');
-    headerRow.className = 'grid gap-2 p-3 bg-indigo-600 text-white font-bold rounded-lg text-center text-sm';
-    headerRow.style.gridTemplateColumns = `80px repeat(${players.length}, 1fr) 60px`;
-    headerRow.innerHTML = '<div>Hole</div>' + players.map(player => `<div class="truncate">${player}</div>`).join('') + '<div>Par</div>';
-    container.appendChild(headerRow);
-
-    // Hole rows
-    for (let hole = 1; hole <= course.holes.length; hole++) {
-        const par = course.holes[hole - 1];
-        const distance = course.distances[hole - 1];
-        const row = document.createElement('div');
-        row.className = 'grid gap-2 p-3 bg-gray-50 hover:bg-gray-100 rounded-lg items-center text-center text-sm';
-        row.style.gridTemplateColumns = `80px repeat(${players.length}, 1fr) 60px`;
-        
-        let rowHTML = `<div class="font-semibold text-indigo-600">${hole}<br><span class="text-xs text-gray-500">${distance}m</span></div>`;
-        
-        players.forEach(player => {
-            const currentScore = currentRound && currentRound.scores[player] ? 
-                currentRound.scores[player][hole - 1] : 0;
-            const displayScore = currentScore > 0 ? currentScore : '';
-            
-            rowHTML += `
-                <div class="flex items-center justify-center gap-1">
-                    <button onclick="updateScore('${player}', ${hole-1}, -1)" 
-                            class="w-7 h-7 bg-red-500 hover:bg-red-600 text-white rounded text-xs font-bold transition-colors duration-200">-</button>
-                    <span id="score-${player}-${hole-1}" 
-                          class="w-8 h-8 flex items-center justify-center font-bold text-gray-800 bg-white border border-gray-300 rounded text-sm">${displayScore}</span>
-                    <button onclick="updateScore('${player}', ${hole-1}, 1)" 
-                            class="w-7 h-7 bg-green-500 hover:bg-green-600 text-white rounded text-xs font-bold transition-colors duration-200">+</button>
+    // Current hole state
+    let currentHole = 0;
+    
+    // Hole navigation header
+    const holeNav = document.createElement('div');
+    holeNav.className = 'bg-indigo-600 text-white rounded-xl p-4 mb-4';
+    holeNav.innerHTML = `
+        <div class="flex justify-between items-center mb-3">
+            <button id="prev-hole" onclick="changeHole(-1)" 
+                    class="bg-white/20 hover:bg-white/30 text-white px-4 py-2 rounded-lg font-medium transition-colors duration-200" 
+                    ${currentHole === 0 ? 'disabled style="opacity: 0.5;"' : ''}>
+                ← Prev
+            </button>
+            <div class="text-center">
+                <div class="text-2xl font-bold">Hole <span id="current-hole-number">1</span></div>
+                <div class="text-indigo-200">Par <span id="current-par">${course.holes[0]}</span> • <span id="current-distance">${course.distances[0]}m</span></div>
+            </div>
+            <button id="next-hole" onclick="changeHole(1)" 
+                    class="bg-white/20 hover:bg-white/30 text-white px-4 py-2 rounded-lg font-medium transition-colors duration-200"
+                    ${currentHole === course.holes.length - 1 ? 'disabled style="opacity: 0.5;"' : ''}>
+                Next →
+            </button>
+        </div>
+        <div class="flex justify-center">
+            <div id="hole-dots" class="flex gap-2">
+                ${course.holes.map((_, index) => 
+                    `<button onclick="goToHole(${index})" 
+                             class="hole-dot w-8 h-8 rounded-full text-xs font-bold transition-all duration-200 ${index === 0 ? 'bg-white text-indigo-600' : 'bg-white/20 text-white hover:bg-white/30'}" 
+                             data-hole="${index}">${index + 1}</button>`
+                ).join('')}
+            </div>
+        </div>
+    `;
+    container.appendChild(holeNav);
+    
+    // Players scoring area
+    const playersArea = document.createElement('div');
+    playersArea.id = 'players-area';
+    playersArea.className = 'space-y-3';
+    container.appendChild(playersArea);
+    
+    // Totals section
+    const totalsSection = document.createElement('div');
+    totalsSection.className = 'bg-green-600 text-white rounded-xl p-4 mt-4';
+    totalsSection.innerHTML = `
+        <h3 class="text-lg font-bold mb-3 text-center">Round Totals</h3>
+        <div id="totals-grid" class="grid gap-3" style="grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));">
+            ${players.map(player => `
+                <div class="text-center">
+                    <div class="font-semibold">${player}</div>
+                    <div id="total-${player.replace(/\s+/g, '-')}" class="text-2xl font-bold">-</div>
                 </div>
-            `;
-        });
-        
-        rowHTML += `<div class="font-bold text-gray-600">${par}</div>`;
-        row.innerHTML = rowHTML;
-        container.appendChild(row);
+            `).join('')}
+        </div>
+    `;
+    container.appendChild(totalsSection);
+    
+    // Initialize the display
+    updateHoleDisplay(course, players, currentHole);
+    updateTotals();
+    
+    // Store current hole globally for other functions to access
+    window.currentHole = currentHole;
+    window.courseData = course;
+    window.playersData = players;
+}
+
+// Update hole display
+async function updateHoleDisplay(course, players, holeIndex) {
+    const par = course.holes[holeIndex];
+    const distance = course.distances[holeIndex];
+    
+    // Update hole info
+    document.getElementById('current-hole-number').textContent = holeIndex + 1;
+    document.getElementById('current-par').textContent = par;
+    document.getElementById('current-distance').textContent = distance;
+    
+    // Update navigation buttons
+    const prevBtn = document.getElementById('prev-hole');
+    const nextBtn = document.getElementById('next-hole');
+    
+    if (holeIndex === 0) {
+        prevBtn.disabled = true;
+        prevBtn.style.opacity = '0.5';
+    } else {
+        prevBtn.disabled = false;
+        prevBtn.style.opacity = '1';
     }
     
-    // Total row
-    const totalRow = document.createElement('div');
-    totalRow.className = 'grid gap-2 p-3 bg-green-600 text-white font-bold rounded-lg text-center';
-    totalRow.style.gridTemplateColumns = `80px repeat(${players.length}, 1fr) 60px`;
+    if (holeIndex === course.holes.length - 1) {
+        nextBtn.disabled = true;
+        nextBtn.style.opacity = '0.5';
+    } else {
+        nextBtn.disabled = false;
+        nextBtn.style.opacity = '1';
+    }
     
-    let totalHTML = '<div>Total</div>';
-    players.forEach(player => {
-        totalHTML += `<div id="total-${player.replace(/\s+/g, '-')}">-</div>`;
+    // Update hole dots
+    document.querySelectorAll('.hole-dot').forEach((dot, index) => {
+        if (index === holeIndex) {
+            dot.className = 'hole-dot w-8 h-8 rounded-full text-xs font-bold transition-all duration-200 bg-white text-indigo-600';
+        } else {
+            dot.className = 'hole-dot w-8 h-8 rounded-full text-xs font-bold transition-all duration-200 bg-white/20 text-white hover:bg-white/30';
+        }
     });
-    totalHTML += `<div>${course.holes.reduce((a, b) => a + b, 0)}</div>`;
     
-    totalRow.innerHTML = totalHTML;
-    container.appendChild(totalRow);
+    // Update players area
+    const playersArea = document.getElementById('players-area');
+    playersArea.innerHTML = '';
+    
+    // Create player cards asynchronously to load profile pictures
+    const createPlayerCard = async (player) => {
+        const currentScore = currentRound && currentRound.scores[player] ? 
+            currentRound.scores[player][holeIndex] : 0;
+        const displayScore = currentScore > 0 ? currentScore : '';
+        const scoreDiff = currentScore > 0 ? currentScore - par : 0;
+        const scoreText = scoreDiff === 0 ? 'E' : scoreDiff > 0 ? `+${scoreDiff}` : scoreDiff.toString();
+        
+        // Get profile picture (this is now async)
+        const profilePicSrc = await getPlayerProfilePicture(player);
+        
+        const playerCard = document.createElement('div');
+        playerCard.className = 'bg-white rounded-xl p-4 shadow-lg border-2 border-gray-100';
+        playerCard.innerHTML = `
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <img src="${profilePicSrc}" alt="${player}" 
+                        class="w-12 h-12 rounded-full border-2 border-indigo-200 object-cover">
+                    <div>
+                        <div class="font-bold text-gray-800">${player}</div>
+                        <div class="text-sm text-gray-600">${scoreText} (${currentScore || par})</div>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button onclick="updateScore('${player}', ${holeIndex}, -1)" 
+                            class="w-10 h-10 bg-red-500 hover:bg-red-600 text-white rounded-full text-lg font-bold transition-colors duration-200 flex items-center justify-center">
+                        −
+                    </button>
+                    <div class="w-12 h-12 flex items-center justify-center font-bold text-lg bg-gray-100 rounded-lg border-2 border-gray-300">
+                        <span id="score-${player}-${holeIndex}">${displayScore}</span>
+                    </div>
+                    <button onclick="updateScore('${player}', ${holeIndex}, 1)" 
+                            class="w-10 h-10 bg-green-500 hover:bg-green-600 text-white rounded-full text-lg font-bold transition-colors duration-200 flex items-center justify-center">
+                        +
+                    </button>
+                </div>
+            </div>
+        `;
+        return playerCard;
+    };
 
-    updateTotals();
+    // Create all player cards
+    Promise.all(players.map(createPlayerCard)).then(playerCards => {
+        playerCards.forEach(card => playersArea.appendChild(card));
+    });
+}
+
+// Helper function to get player profile picture
+async function getPlayerProfilePicture(playerName) {
+    // Check cache first
+    if (profilePictureCache[playerName]) {
+        return profilePictureCache[playerName];
+    }
+    
+    try {
+        // Query the database for the player's profile picture
+        const { data, error } = await supabase
+            .from('profiles')
+            .select('profile_picture_base64')
+            .eq('username', playerName)
+            .single();
+
+        if (error || !data || !data.profile_picture_base64) {
+            // Default image if no profile picture found
+            profilePictureCache[playerName] = "./images/user.png";
+            return "./images/user.png";
+        }
+
+        // Cache and return the base64 image
+        profilePictureCache[playerName] = data.profile_picture_base64;
+        return data.profile_picture_base64;
+        
+    } catch (error) {
+        console.error('Error loading profile picture for', playerName, error);
+        profilePictureCache[playerName] = "./images/user.png";
+        return "./images/user.png";
+    }
+}
+
+// Navigation functions
+function changeHole(direction) {
+    const newHole = window.currentHole + direction;
+    const maxHole = window.courseData.holes.length - 1;
+    
+    if (newHole >= 0 && newHole <= maxHole) {
+        window.currentHole = newHole;
+        updateHoleDisplay(window.courseData, window.playersData, newHole);
+    }
+}
+
+function goToHole(holeIndex) {
+    window.currentHole = holeIndex;
+    updateHoleDisplay(window.courseData, window.playersData, holeIndex);
 }
 
 async function updateScore(player, holeIndex, change) {
@@ -813,7 +915,23 @@ async function updateScore(player, holeIndex, change) {
     currentRound.scores[player][holeIndex] = newScore;
 
     // Update display
-    document.getElementById(`score-${player}-${holeIndex}`).textContent = newScore;
+    const scoreElement = document.getElementById(`score-${player}-${holeIndex}`);
+    if (scoreElement) {
+        scoreElement.textContent = newScore;
+    }
+
+    // Update the player's score difference display
+    const scoreDiff = newScore - par;
+    const scoreText = scoreDiff === 0 ? 'E' : scoreDiff > 0 ? `+${scoreDiff}` : scoreDiff.toString();
+    
+    // Find and update the score difference text
+    const playerCard = scoreElement.closest('.bg-white');
+    if (playerCard) {
+        const scoreInfo = playerCard.querySelector('.text-sm.text-gray-600');
+        if (scoreInfo) {
+            scoreInfo.textContent = `${scoreText} (${newScore})`;
+        }
+    }
 
     // Update totals
     updateTotals();
@@ -1347,6 +1465,197 @@ function signOutSuccessful() {
     document.getElementById('main-app').style.display = 'none';
 }
 
+async function uploadProfilePicture(file, userId) {
+    try {
+        // Create unique filename
+        const fileExt = file.name.split('.').pop();
+        const fileName = `${userId}-${Date.now()}.${fileExt}`;
+        
+        // Upload to Supabase Storage
+        const { data, error } = await supabase.storage
+            .from('profile-pictures')
+            .upload(fileName, file, {
+                cacheControl: '3600',
+                upsert: false
+            });
+
+        if (error) {
+            throw error;
+        }
+
+        // Get public URL
+        const { data: { publicUrl } } = supabase.storage
+            .from('profile-pictures')
+            .getPublicUrl(fileName);
+
+        return { fileName, publicUrl };
+    } catch (error) {
+        console.error('Error uploading profile picture:', error);
+        throw error;
+    }
+}
+
+async function deleteOldProfilePicture(fileName) {
+    if (!fileName || fileName === 'default') return;
+    
+    try {
+        await supabase.storage
+            .from('profile-pictures')
+            .remove([fileName]);
+    } catch (error) {
+        console.error('Error deleting old profile picture:', error);
+    }
+}
+
+// Preview and convert to base64
+function previewProfilePicture(event) {
+    const file = event.target.files[0];
+    if (file) {
+        // Validate file size (max 1MB for base64 storage)
+        if (file.size > 1 * 1024 * 1024) {
+            Swal.fire({
+                icon: "error",
+                title: "File Too Large",
+                text: "Profile picture must be less than 1MB",
+            });
+            return;
+        }
+
+        // Validate file type
+        if (!file.type.startsWith('image/')) {
+            Swal.fire({
+                icon: "error",
+                title: "Invalid File Type",
+                text: "Please select an image file",
+            });
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            // Compress and resize the image
+            compressImage(e.target.result, (compressedBase64) => {
+                selectedProfilePicture = compressedBase64;
+                document.getElementById('profile-picture-preview').src = compressedBase64;
+            });
+        };
+        reader.readAsDataURL(file);
+    }
+}
+
+// Compress image to reduce size
+function compressImage(base64, callback) {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    const img = new Image();
+    
+    img.onload = function() {
+        // Set canvas size (max 200x200)
+        const maxSize = 200;
+        let { width, height } = img;
+        
+        if (width > height) {
+            if (width > maxSize) {
+                height = (height * maxSize) / width;
+                width = maxSize;
+            }
+        } else {
+            if (height > maxSize) {
+                width = (width * maxSize) / height;
+                height = maxSize;
+            }
+        }
+        
+        canvas.width = width;
+        canvas.height = height;
+        
+        // Draw and compress
+        ctx.drawImage(img, 0, 0, width, height);
+        const compressedBase64 = canvas.toDataURL('image/jpeg', 0.7);
+        callback(compressedBase64);
+    };
+    
+    img.src = base64;
+}
+
+// Update the loadProfile function
+async function loadProfile() {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+        Swal.fire({
+            icon: "error",
+            title: "You must login first!",
+        });
+        return;
+    }
+
+    // Fill in email field
+    document.getElementById("profile-email").value = user.email;
+
+    // Load profile from DB
+    const { data, error } = await supabase
+        .from("profiles")
+        .select("username, bio, profile_picture_base64")
+        .eq("id", user.id)
+        .single();
+
+    if (data) {
+        document.getElementById("profile-username").value = data.username || "";
+        document.getElementById("profile-bio").value = data.bio || "";
+        
+        // Update profile picture
+        const profilePicSrc = data.profile_picture_base64 || "./images/user.png";
+        document.getElementById("profile-picture-preview").src = profilePicSrc;
+        document.getElementById("user-avatar").src = profilePicSrc;
+    }
+}
+
+// Update the saveProfile function
+async function saveProfile() {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const username = document.getElementById("profile-username").value;
+    const bio = document.getElementById("profile-bio").value;
+
+    try {
+        let profileData = {
+            id: user.id,
+            username,
+            bio,
+            updated_at: new Date()
+        };
+
+        // Add profile picture if selected
+        if (selectedProfilePicture) {
+            profileData.profile_picture_base64 = selectedProfilePicture;
+            
+            // Update navigation avatar
+            document.getElementById("user-avatar").src = selectedProfilePicture;
+            selectedProfilePicture = null; // Clear the selected file
+        }
+
+        const { error } = await supabase.from("profiles").upsert(profileData);
+
+        if (error) {
+            throw error;
+        }
+
+        Swal.fire({
+            title: "Profile Saved!",
+            icon: "success"
+        });
+
+    } catch (error) {
+        console.error('Error saving profile:', error);
+        Swal.fire({
+            icon: "error",
+            title: "Error Saving Profile",
+            text: error.message,
+        });
+    }
+}
+
 window.showSection = showSection;
 window.startRound = startRound;
 window.updateScore = updateScore;
@@ -1354,6 +1663,7 @@ window.signOut = signOut;
 window.signUp = signUp;
 window.signIn = signIn;
 window.saveProfile = saveProfile;
+window.previewProfilePicture = previewProfilePicture
 
 // Add these to your window exports
 window.searchUsers = searchUsers;
@@ -1369,6 +1679,8 @@ window.viewRoundDetails = viewRoundDetails;
 window.deleteRound = deleteRound;
 window.updateProgress = updateProgress;
 window.loadHistory = loadHistory;
+window.changeHole = changeHole;
+window.goToHole = goToHole;
 
 // Run on page load
 window.addEventListener("DOMContentLoaded", async () => {
