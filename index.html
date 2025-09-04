@@ -110,31 +110,57 @@
                         Your Progress
                     </h2>
                     
+                    <!-- Main Stats Grid -->
                     <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
                         <div class="bg-gradient-to-br from-indigo-500 to-purple-600 text-white p-6 rounded-xl text-center shadow-lg">
-                            <div id="total-rounds" class="text-3xl font-bold mb-2 text-sm">0</div>
+                            <div id="total-rounds" class="text-3xl font-bold mb-2">0</div>
                             <div class="text-indigo-100 text-sm">Total Rounds</div>
                         </div>
                         <div class="bg-gradient-to-br from-green-500 to-teal-600 text-white p-6 rounded-xl text-center shadow-lg">
-                            <div id="avg-score" class="text-3xl font-bold mb-2 text-sm">-</div>
+                            <div id="avg-score" class="text-3xl font-bold mb-2">-</div>
                             <div class="text-green-100 text-sm">Average Score</div>
                         </div>
                         <div class="bg-gradient-to-br from-orange-500 to-red-600 text-white p-6 rounded-xl text-center shadow-lg">
-                            <div id="best-score" class="text-3xl font-bold mb-2 text-sm">-</div>
-                            <div class="text-orange-100 text-sm">Best Score</div>
+                            <div id="best-round" class="text-3xl font-bold mb-2">-</div>
+                            <div class="text-orange-100 text-sm">Best Round</div>
                         </div>
                         <div class="bg-gradient-to-br from-purple-500 to-pink-600 text-white p-6 rounded-xl text-center shadow-lg">
-                            <div id="improvement" class="text-3xl font-bold mb-2 text-sm">-</div>
-                            <div class="text-purple-100 text-sm">Last 5 Average</div>
+                            <div id="avg-par" class="text-3xl font-bold mb-2">-</div>
+                            <div class="text-purple-100 text-sm">Average +/-</div>
                         </div>
                     </div>
-                    
+
+                    <!-- Score Distribution Chart -->
+                    <div class="bg-gray-50 rounded-xl p-6 mb-6">
+                        <h3 class="text-lg font-semibold text-gray-800 mb-4">Score Distribution</h3>
+                        <div id="score-distribution" class="space-y-3">
+                            <!-- Score bars will be inserted here -->
+                        </div>
+                    </div>
+
+                    <!-- Course Performance -->
+                    <div class="bg-gray-50 rounded-xl p-6 mb-6">
+                        <h3 class="text-lg font-semibold text-gray-800 mb-4">Course Performance</h3>
+                        <div id="course-performance" class="space-y-3">
+                            <!-- Course stats will be inserted here -->
+                        </div>
+                    </div>
+
+                    <!-- Recent Performance Trend -->
                     <div class="bg-gray-50 rounded-xl p-6">
-                        <h3 class="text-lg font-semibold text-gray-800 mb-4">Score Trends</h3>
-                        <div id="score-chart" class="h-64 bg-white rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center text-gray-500">
-                            <div class="text-center">
-                                <div class="text-4xl mb-2">📈</div>
-                                <div>Score progression chart will appear here</div>
+                        <h3 class="text-lg font-semibold text-gray-800 mb-4">Recent Performance</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div class="text-center p-4 bg-white rounded-lg">
+                                <div id="last-5-avg" class="text-2xl font-bold text-indigo-600">-</div>
+                                <div class="text-sm text-gray-600">Last 5 Average</div>
+                            </div>
+                            <div class="text-center p-4 bg-white rounded-lg">
+                                <div id="improvement-trend" class="text-2xl font-bold text-green-600">-</div>
+                                <div class="text-sm text-gray-600">Trend</div>
+                            </div>
+                            <div class="text-center p-4 bg-white rounded-lg">
+                                <div id="best-course" class="text-xl font-bold text-orange-600">-</div>
+                                <div class="text-sm text-gray-600">Best Course</div>
                             </div>
                         </div>
                     </div>

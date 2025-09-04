@@ -282,14 +282,19 @@ async function loadFriends() {
 
         // Display each friend with their stats
         friendProfiles.forEach(friend => {
-            // Calculate stats from their rounds - look for rounds where they were a player
+            // Calculate stats from their rounds - now each friend should have their own round entries
             const friendRounds = allFriendRounds?.filter(r => r.user_id === friend.id) || [];
             
             // Get scores from final_scores using friend's username
             const scores = friendRounds
                 .map(round => {
+                    // Try multiple ways to get the score
                     if (round.final_scores && friend.username && round.final_scores[friend.username] != null) {
                         return round.final_scores[friend.username];
+                    }
+                    // Fallback: check if there's a score by user ID
+                    if (round.final_scores_by_id && round.final_scores_by_id[friend.id] != null) {
+                        return round.final_scores_by_id[friend.id];
                     }
                     return null;
                 })
@@ -954,7 +959,7 @@ async function startRound() {
             id: newRound.id,
             courseId: courseId,
             courseName: course.name,
-            playerIds: allPlayerIds,
+            playerIds: allPlayerIds, // All players (registered + guests)
             registeredPlayerIds: playerIds, // Keep track of registered players only
             guestPlayers: guestPlayers,
             playerIdToUsername: playerIdToUsername,
@@ -962,6 +967,9 @@ async function startRound() {
             scores: initialScores,
             date: new Date().toLocaleDateString()
         };
+
+        console.log('Current round registered players:', playerIds);
+        console.log('Current round all players:', allPlayerIds);
         
         // Create scorecard using display names
         const allPlayerNames = [...playerIds.map(id => playerIdToUsername[id]), ...guestPlayers.map(name => `${name} (Guest)`)];
@@ -1427,13 +1435,30 @@ async function saveCurrentRoundScores() {
 function updateTotals() {
     if (!currentRound) return;
     
+    // Get the course data to calculate par
+    const course = coursesData.find(c => c.id == currentRound.courseId);
+    if (!course) return;
+    
+    const totalPar = course.holes.reduce((sum, par) => sum + par, 0);
+    
     Object.keys(currentRound.scores).forEach(playerId => {
         const scores = currentRound.scores[playerId];
         const total = scores.reduce((sum, score) => sum + (parseInt(score) || 0), 0);
         const username = currentRound.playerIdToUsername[playerId];
         const totalElement = document.getElementById(`total-${username.replace(/\s+/g, '-')}`);
+        
         if (totalElement) {
-            totalElement.textContent = total || '-';
+            if (total > 0) {
+                const scoreToPar = total - totalPar;
+                const scoreToParText = scoreToPar === 0 ? 'E' : 
+                                     scoreToPar > 0 ? `+${scoreToPar}` : 
+                                     scoreToPar.toString();
+                
+                totalElement.textContent = `${total} (${scoreToParText})`;
+            } else {
+                totalElement.textContent = '-';
+                totalElement.className = 'text-lg font-bold';
+            }
         }
     });
 }
@@ -1513,13 +1538,18 @@ async function finishRound() {
             }
         });
 
-        // Update the current round (owned by the user who created it)
+        // Get all registered player IDs (exclude guests)
+        const allRegisteredPlayerIds = currentRound.playerIds.filter(id => !id.startsWith('guest_'));
+        
+        console.log('All registered player IDs for round completion:', allRegisteredPlayerIds);
+
+        // Update the original round (owned by the creator)
         const { error: updateError } = await supabase
             .from('rounds')
             .update({
                 final_scores: finalScoresByUsername,
                 status: 'completed',
-                player_ids: currentRound.registeredPlayerIds || currentRound.playerIds.filter(id => !id.startsWith('guest_')),
+                player_ids: allRegisteredPlayerIds,
                 player_usernames: currentRound.playerIdToUsername,
                 guest_players: currentRound.guestPlayers || [],
                 players: Object.values(currentRound.playerIdToUsername),
@@ -1532,20 +1562,18 @@ async function finishRound() {
             throw updateError;
         }
 
-        // Create duplicate entries for other registered players only (not guests)
-        const allRegisteredPlayerIds = currentRound.playerIds.filter(id => !id.startsWith('guest_'));
-        const otherRegisteredPlayerIds = (currentRound.registeredPlayerIds || currentRound.playerIds.filter(id => !id.startsWith('guest_')))
-            .filter(id => id !== user.id);
+        // Create duplicate entries for OTHER registered players (not the creator)
+        const otherRegisteredPlayerIds = allRegisteredPlayerIds.filter(id => id !== user.id);
         
-        console.log('Creating duplicates for players:', otherRegisteredPlayerIds);
+        console.log('Creating duplicate rounds for players:', otherRegisteredPlayerIds);
         
         if (otherRegisteredPlayerIds.length > 0) {
             const duplicateRounds = otherRegisteredPlayerIds.map(playerId => ({
-                user_id: playerId, // This is the key - each player gets their own entry
+                user_id: playerId, // Each player gets their own entry
                 course_id: parseInt(currentRound.courseId),
                 course_name: currentRound.courseName,
                 players: [...allRegisteredPlayerIds.map(id => currentRound.playerIdToUsername[id]), ...(currentRound.guestPlayers || []).map(name => `${name} (Guest)`)],
-                player_ids: allRegisteredPlayerIds,
+                player_ids: allRegisteredPlayerIds, // All registered players
                 player_usernames: currentRound.playerIdToUsername,
                 guest_players: currentRound.guestPlayers || [],
                 scores: currentRound.scores,
@@ -1708,15 +1736,22 @@ async function loadHistory() {
                         <div class="border-t pt-4">
                             <p class="text-sm font-medium text-gray-700 mb-2">Leaderboard (course par ${par}):</p>
                             <div class="flex flex-wrap gap-2">
-                                ${topPlayers.map((player, index) => `
-                                    <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${
-                                        index === 0 ? 'bg-yellow-100 text-yellow-800' : 
-                                        index === 1 ? 'bg-gray-100 text-gray-800' : 
-                                        'bg-orange-100 text-orange-800'
-                                    }">
-                                        ${index + 1}. ${player.name}: ${player.score}
-                                    </span>
-                                `).join('')}
+                                ${topPlayers.map((player, index) => {
+                                    const scoreToPar = player.score - par;
+                                    const scoreToParText = scoreToPar === 0 ? 'E' : 
+                                                        scoreToPar > 0 ? `+${scoreToPar}` : 
+                                                        scoreToPar.toString();
+                                    
+                                    return `
+                                        <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${
+                                            index === 0 ? 'bg-yellow-100 text-yellow-800' : 
+                                            index === 1 ? 'bg-gray-100 text-gray-800' : 
+                                            'bg-orange-100 text-orange-800'
+                                        }">
+                                            ${index + 1}. ${player.name}: ${scoreToParText}
+                                        </span>
+                                    `;
+                                }).join('')}
                             </div>
                         </div>
                     ` : ''}
@@ -1748,7 +1783,7 @@ async function updateProgress() {
         // Load completed rounds
         const { data: rounds, error } = await supabase
             .from('rounds')
-            .select('final_scores, course_id, created_at')
+            .select('final_scores, course_id, course_name, created_at, scores, player_ids, player_usernames')
             .eq('user_id', user.id)
             .eq('status', 'completed')
             .order('created_at', { ascending: true });
@@ -1758,12 +1793,9 @@ async function updateProgress() {
             return;
         }
 
-        // Filter rounds where user actually played
+        // Filter rounds where user actually has a score
         const yourRounds = rounds.filter(round => {
-            if (round.final_scores_by_id && round.final_scores_by_id[user.id]) {
-                return true;
-            }
-            if (round.final_scores && currentUsername && round.final_scores[currentUsername]) {
+            if (round.final_scores && currentUsername && round.final_scores[currentUsername] != null) {
                 return true;
             }
             return false;
@@ -1771,55 +1803,260 @@ async function updateProgress() {
         
         document.getElementById('total-rounds').textContent = yourRounds.length;
         
-        if (yourRounds.length > 0) {
-            // In updateProgress, after getting rounds:
-            const yourRounds = rounds.filter(round => {
-                // Check if user played in this round by checking final_scores for their username
-                return round.final_scores && currentUsername && round.final_scores[currentUsername] != null;
-            });
+        if (yourRounds.length === 0) {
+            // Reset all displays for no data
+            document.getElementById('avg-score').textContent = '-';
+            document.getElementById('best-round').textContent = '-';
+            document.getElementById('avg-par').textContent = '-';
+            document.getElementById('last-5-avg').textContent = '-';
+            document.getElementById('improvement-trend').textContent = '-';
+            document.getElementById('best-course').textContent = 'No rounds yet';
+            document.getElementById('score-distribution').innerHTML = '<p class="text-gray-500 text-center">No rounds completed yet</p>';
+            document.getElementById('course-performance').innerHTML = '<p class="text-gray-500 text-center">No rounds completed yet</p>';
+            return;
+        }
 
-            // Get scores
-            const scores = yourRounds.map(round => round.final_scores[currentUsername]);
-            const avgScore = (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1);
-            const bestScore = Math.min(...scores);
+        // Calculate detailed statistics
+        const roundsWithDetails = yourRounds.map(round => {
+            const score = round.final_scores[currentUsername];
+            const course = coursesData.find(c => c.id == round.course_id);
+            const par = course ? course.holes.reduce((a, b) => a + b, 0) : 0;
+            const scoreToPar = par > 0 ? score - par : 0;
             
-            document.getElementById('avg-score').textContent = avgScore;
-            document.getElementById('best-score').textContent = bestScore;
+            // Get hole-by-hole scores for this user
+            const userScores = getUserHoleScores(round, user.id, currentUsername);
             
-            // Last 5 rounds average
-            const last5 = scores.slice(-5);
-            if (last5.length >= 2) {
-                const last5Avg = (last5.reduce((a, b) => a + b, 0) / last5.length).toFixed(1);
-                document.getElementById('improvement').textContent = last5Avg;
+            return {
+                ...round,
+                score,
+                par,
+                scoreToPar,
+                course,
+                holeScores: userScores
+            };
+        }).filter(round => round.par > 0); // Only include rounds with valid course data
+
+        if (roundsWithDetails.length === 0) {
+            document.getElementById('score-distribution').innerHTML = '<p class="text-gray-500 text-center">No valid course data available</p>';
+            document.getElementById('course-performance').innerHTML = '<p class="text-gray-500 text-center">No valid course data available</p>';
+            return;
+        }
+
+        // Basic stats
+        const scores = roundsWithDetails.map(r => r.score);
+        const scoresToPar = roundsWithDetails.map(r => r.scoreToPar);
+        
+        const avgScore = (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1);
+        const bestScore = Math.min(...scores);
+        const bestRound = roundsWithDetails.find(r => r.score === bestScore);
+        const avgToPar = (scoresToPar.reduce((a, b) => a + b, 0) / scoresToPar.length).toFixed(1);
+        
+        document.getElementById('avg-score').textContent = avgScore;
+        document.getElementById('best-round').textContent = bestRound ? `${bestScore} (${bestRound.scoreToPar >= 0 ? '+' : ''}${bestRound.scoreToPar})` : bestScore;
+        document.getElementById('avg-par').textContent = avgToPar >= 0 ? `+${avgToPar}` : avgToPar;
+
+        // Last 5 rounds average and trend
+        const last5 = roundsWithDetails.slice(-5);
+        if (last5.length >= 2) {
+            const last5ToPar = last5.map(r => r.scoreToPar);
+            const last5Avg = (last5ToPar.reduce((a, b) => a + b, 0) / last5ToPar.length).toFixed(1);
+            document.getElementById('last-5-avg').textContent = last5Avg >= 0 ? `+${last5Avg}` : last5Avg;
+            
+            // Calculate trend
+            if (roundsWithDetails.length >= 10) {
+                const first5ToPar = roundsWithDetails.slice(0, 5).map(r => r.scoreToPar);
+                const first5Avg = first5ToPar.reduce((a, b) => a + b, 0) / first5ToPar.length;
+                const improvement = first5Avg - parseFloat(last5Avg);
                 
-                // Simple improvement indicator
-                if (last5.length >= 5 && yourRounds.length >= 10) {
-                    const first5Avg = scores.slice(0, 5).reduce((a, b) => a + b, 0) / 5;
-                    if (parseFloat(last5Avg) < first5Avg) {
-                        document.getElementById('improvement').innerHTML = 
-                            last5Avg + ' <span style="color: #28a745; font-weight: bold;">📈 Improving!</span>';
-                    }
+                if (improvement > 1) {
+                    document.getElementById('improvement-trend').innerHTML = '📈 +' + improvement.toFixed(1);
+                    document.getElementById('improvement-trend').className = 'text-2xl font-bold text-green-600';
+                } else if (improvement < -1) {
+                    document.getElementById('improvement-trend').innerHTML = '📉 ' + improvement.toFixed(1);
+                    document.getElementById('improvement-trend').className = 'text-2xl font-bold text-red-600';
+                } else {
+                    document.getElementById('improvement-trend').innerHTML = '➡️ Steady';
+                    document.getElementById('improvement-trend').className = 'text-2xl font-bold text-gray-600';
                 }
             } else {
-                document.getElementById('improvement').textContent = 'Need more rounds';
+                document.getElementById('improvement-trend').textContent = 'Need more data';
             }
         } else {
-            document.getElementById('avg-score').textContent = '-';
-            document.getElementById('best-score').textContent = '-';
-            document.getElementById('improvement').textContent = 'No rounds yet';
+            document.getElementById('last-5-avg').textContent = 'Need more rounds';
+            document.getElementById('improvement-trend').textContent = '-';
         }
+
+        // Calculate score distribution (birdies, pars, bogeys, etc.)
+        const scoreTypes = {
+            'Ace (Hole-in-one)': 0,
+            'Albatross (-3)': 0,
+            'Eagle (-2)': 0,
+            'Birdie (-1)': 0,
+            'Par (E)': 0,
+            'Bogey (+1)': 0,
+            'Double Bogey (+2)': 0,
+            'Triple+ (+3)': 0
+        };
+
+        let totalHoles = 0;
+
+        roundsWithDetails.forEach(round => {
+            if (round.holeScores && round.course) {
+                round.holeScores.forEach((score, holeIndex) => {
+                    if (score > 0 && holeIndex < round.course.holes.length) {
+                        const par = round.course.holes[holeIndex];
+                        const diff = score - par;
+                        totalHoles++;
+
+                        if (score === 1) {
+                            scoreTypes['Ace (Hole-in-one)']++;
+                        } else if (diff === -3) {
+                            scoreTypes['Albatross (-3)']++;
+                        } else if (diff === -2) {
+                            scoreTypes['Eagle (-2)']++;
+                        } else if (diff === -1) {
+                            scoreTypes['Birdie (-1)']++;
+                        } else if (diff === 0) {
+                            scoreTypes['Par (E)']++;
+                        } else if (diff === 1) {
+                            scoreTypes['Bogey (+1)']++;
+                        } else if (diff === 2) {
+                            scoreTypes['Double Bogey (+2)']++;
+                        } else if (diff >= 3) {
+                            scoreTypes['Triple+ (+3)']++;
+                        }
+                    }
+                });
+            }
+        });
+
+        // Display score distribution
+        const distributionContainer = document.getElementById('score-distribution');
+        distributionContainer.innerHTML = '';
+
+        Object.entries(scoreTypes).forEach(([type, count]) => {
+            const percentage = totalHoles > 0 ? (count / totalHoles * 100).toFixed(1) : 0;
+            const color = getScoreTypeColor(type);
+            
+            if (count > 0 || ['Birdie (-1)', 'Par (E)', 'Bogey (+1)', 'Double Bogey (+2)'].includes(type)) {
+                const bar = document.createElement('div');
+                bar.className = 'flex items-center justify-between p-3 bg-white rounded-lg';
+                bar.innerHTML = `
+                    <div class="flex items-center gap-3 flex-1">
+                        <span class="font-medium text-sm w-32">${type}</span>
+                        <div class="flex-1 bg-gray-200 rounded-full h-6 relative overflow-hidden">
+                            <div class="h-full rounded-full ${color}" style="width: ${Math.max(percentage, 2)}%"></div>
+                            <span class="absolute inset-0 flex items-center justify-center text-xs font-semibold text-gray-700">
+                                ${percentage}%
+                            </span>
+                        </div>
+                        <span class="font-bold text-sm w-8">${count}</span>
+                    </div>
+                `;
+                distributionContainer.appendChild(bar);
+            }
+        });
+
+        // Course performance analysis
+        const courseStats = {};
+        roundsWithDetails.forEach(round => {
+            const courseName = round.course_name;
+            if (!courseStats[courseName]) {
+                courseStats[courseName] = {
+                    rounds: 0,
+                    totalScore: 0,
+                    totalToPar: 0,
+                    bestScore: Infinity,
+                    bestToPar: Infinity
+                };
+            }
+            
+            courseStats[courseName].rounds++;
+            courseStats[courseName].totalScore += round.score;
+            courseStats[courseName].totalToPar += round.scoreToPar;
+            courseStats[courseName].bestScore = Math.min(courseStats[courseName].bestScore, round.score);
+            courseStats[courseName].bestToPar = Math.min(courseStats[courseName].bestToPar, round.scoreToPar);
+        });
+
+        // Find best course (lowest average to par)
+        let bestCourseName = '-';
+        let bestCourseAvg = Infinity;
         
-        // Update chart placeholder with basic trend info
-        const chartEl = document.getElementById('score-chart');
-        if (chartEl && yourRounds.length >= 3) {
-            const recent = yourRounds.slice(-3).map(r => r.final_scores[currentUsername]);
-            const trend = recent[2] < recent[0] ? '📈 Improving trend!' : 
-                        recent[2] > recent[0] ? '📉 Work on consistency' : '➡️ Steady performance';
-            chartEl.innerHTML = `<div style="text-align: center;"><div style="font-size: 24px; margin-bottom: 10px;">${trend}</div><div>Last 3 scores: ${recent.join(', ')}</div></div>`;
-        }
+        Object.entries(courseStats).forEach(([courseName, stats]) => {
+            const avgToPar = stats.totalToPar / stats.rounds;
+            if (avgToPar < bestCourseAvg) {
+                bestCourseAvg = avgToPar;
+                bestCourseName = courseName;
+            }
+        });
+        
+        document.getElementById('best-course').textContent = bestCourseName;
+
+        // Display course performance
+        const courseContainer = document.getElementById('course-performance');
+        courseContainer.innerHTML = '';
+
+        Object.entries(courseStats)
+            .sort(([,a], [,b]) => (a.totalToPar / a.rounds) - (b.totalToPar / b.rounds))
+            .forEach(([courseName, stats]) => {
+                const avgScore = (stats.totalScore / stats.rounds).toFixed(1);
+                const avgToPar = (stats.totalToPar / stats.rounds).toFixed(1);
+                const isPerformanceGood = stats.totalToPar / stats.rounds < 0;
+                
+                const courseCard = document.createElement('div');
+                courseCard.className = 'flex items-center justify-between p-4 bg-white rounded-lg border-l-4 ' + 
+                    (isPerformanceGood ? 'border-green-500' : 'border-red-500');
+                courseCard.innerHTML = `
+                    <div>
+                        <h4 class="font-semibold text-gray-800">${courseName}</h4>
+                        <p class="text-sm text-gray-600">${stats.rounds} round${stats.rounds !== 1 ? 's' : ''} played</p>
+                    </div>
+                    <div class="text-right">
+                        <div class="font-bold text-lg ${isPerformanceGood ? 'text-green-600' : 'text-red-600'}">
+                            ${avgToPar >= 0 ? '+' : ''}${avgToPar}
+                        </div>
+                        <div class="text-sm text-gray-600">
+                            Best: ${stats.bestToPar >= 0 ? '+' : ''}${stats.bestToPar}
+                        </div>
+                    </div>
+                `;
+                courseContainer.appendChild(courseCard);
+            });
+
     } catch (error) {
         console.error('Error updating progress:', error);
     }
+}
+
+// Helper function to get user's hole scores from a round
+function getUserHoleScores(round, userId, username) {
+    // Try new format first
+    if (round.scores && round.scores[userId]) {
+        return round.scores[userId];
+    }
+    
+    // Fallback to old format
+    if (round.scores && round.scores[username]) {
+        return round.scores[username];
+    }
+    
+    return [];
+}
+
+// Helper function to get color for score types
+function getScoreTypeColor(type) {
+    const colorMap = {
+        'Ace (Hole-in-one)': 'bg-gradient-to-r from-purple-500 to-purple-600',
+        'Albatross (-3)': 'bg-gradient-to-r from-purple-400 to-purple-500',
+        'Eagle (-2)': 'bg-gradient-to-r from-blue-500 to-blue-600',
+        'Birdie (-1)': 'bg-gradient-to-r from-green-500 to-green-600',
+        'Par (E)': 'bg-gradient-to-r from-gray-400 to-gray-500',
+        'Bogey (+1)': 'bg-gradient-to-r from-yellow-500 to-yellow-600',
+        'Double Bogey (+2)': 'bg-gradient-to-r from-orange-500 to-orange-600',
+        'Triple+ (+3)': 'bg-gradient-to-r from-red-500 to-red-600'
+    };
+    
+    return colorMap[type] || 'bg-gray-400';
 }
 
 async function updateUserStats() {
