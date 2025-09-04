@@ -6,8 +6,11 @@
     <title>Disc Golf Tracker</title>
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="mobile_style.css">
+
     <script type="module" src="script.js"></script>
+    
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body>
     <div id="login-screen" class="login-container" style="display: true;">
@@ -32,27 +35,24 @@
         </div>
     </div>
     <!-- Main App (hidden until logged in) -->
-    <div id="main-app" class="container" style="display: none;">
+    <div id="main-app" style="display: none;">
         <header class="header">
             <div class="header-content">
                 <div class="user-info-header">
-                    <img id="user-avatar" src="./images/user.png" alt="User" class="user-avatar">
-                    <span id="user-name">Demo User</span>
+                    <img id="user-avatar" src="./images/user.png" alt="User" class="user-avatar" onclick="showSection('profile')" title="View Profile">
                 </div>
                 <div class="header-text">
                     <h1>🥏 Disc Golf Tracker</h1>
-                    <p>Track your rounds, improve your game, connect with friends</p>
                 </div>
             </div>
         </header>
         
-
+        <div class="continer">
         <nav class="nav">
             <button class="nav-btn active" data-label="New Round" onclick="showSection('new-round')">🥏</button>
             <button class="nav-btn" data-label="History" onclick="showSection('history')">📝</button>
             <button class="nav-btn" data-label="Progress" onclick="showSection('progress')">📈</button>
             <button class="nav-btn" data-label="Friends" onclick="showSection('friends')">👥</button>
-            <button class="nav-btn" data-label="Profile" onclick="showSection('profile')">👤</button>
         </nav>
 
         <!-- New Round Section -->
@@ -171,6 +171,7 @@
             </div>
             <button class="btn" onclick="saveProfile()">Save Profile</button>
             <button class="btn logout-btn" onclick="signOut()">Logout</button>
+        </div>
         </div>
         </div>
     </div>
