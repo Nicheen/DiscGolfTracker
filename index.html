@@ -6,9 +6,12 @@
     <title>Disc Golf Tracker</title>
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="mobile_style.css">
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#4f46e5">
     <script src="https://cdn.tailwindcss.com"></script>
     <script type="module" src="script.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <link rel="icon" type="image/x-icon" href="/images/icon.png">
 </head>
 <body>
     <div id="login-screen" class="bg-gradient-to-r from-indigo-600 to-purple-600 login-container" style="display: true;">
@@ -227,24 +230,24 @@
         
         <!-- Fixed Bottom Navigation -->
         <nav class="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-gray-200 px-2 py-2 z-50 shadow-lg">
-            <div class="flex justify-around items-center max-w-6xl mx-auto">
-                <button class="nav-btn flex flex-col items-center gap-1 px-3 py-2 rounded-lg font-medium transition-all duration-200 bg-indigo-600 text-white" onclick="showSection('new-round')">
+            <div class="flex items-center max-w-6xl mx-auto">
+                <button class="nav-btn flex-1 flex flex-col items-center gap-1 py-1 rounded-lg font-medium transition-all duration-200 bg-indigo-600 text-white" onclick="showSection('new-round')">
                     <span class="text-xl">🥏</span>
                     <span class="text-xs">Round</span>
                 </button>
-                <button class="nav-btn flex flex-col items-center gap-1 px-3 py-2 rounded-lg font-medium transition-all duration-200 text-gray-600 hover:text-indigo-600 hover:bg-indigo-50" onclick="showSection('history')">
+                <button class="nav-btn flex-1 flex flex-col items-center gap-1 py-1 rounded-lg font-medium transition-all duration-200 text-gray-600 hover:text-indigo-600 hover:bg-indigo-50" onclick="showSection('history')">
                     <span class="text-xl">📝</span>
                     <span class="text-xs">History</span>
                 </button>
-                <button class="nav-btn flex flex-col items-center gap-1 px-3 py-2 rounded-lg font-medium transition-all duration-200 text-gray-600 hover:text-indigo-600 hover:bg-indigo-50" onclick="showSection('progress')">
+                <button class="nav-btn flex-1 flex flex-col items-center gap-1 py-1 rounded-lg font-medium transition-all duration-200 text-gray-600 hover:text-indigo-600 hover:bg-indigo-50" onclick="showSection('progress')">
                     <span class="text-xl">📈</span>
                     <span class="text-xs">Progress</span>
                 </button>
-                <button class="nav-btn flex flex-col items-center gap-1 px-3 py-2 rounded-lg font-medium transition-all duration-200 text-gray-600 hover:text-indigo-600 hover:bg-indigo-50" onclick="showSection('friends')">
+                <button class="nav-btn flex-1 flex flex-col items-center gap-1 py-1 rounded-lg font-medium transition-all duration-200 text-gray-600 hover:text-indigo-600 hover:bg-indigo-50" onclick="showSection('friends')">
                     <span class="text-xl">👥</span>
                     <span class="text-xs">Friends</span>
                 </button>
-                <button class="nav-btn flex flex-col items-center gap-1 px-3 py-2 rounded-lg font-medium transition-all duration-200 text-gray-600 hover:text-indigo-600 hover:bg-indigo-50" onclick="showSection('profile')">
+                <button class="nav-btn flex-1 flex flex-col items-center gap-1 py-1 rounded-lg font-medium transition-all duration-200 text-gray-600 hover:text-indigo-600 hover:bg-indigo-50" onclick="showSection('profile')">
                     <img id="user-avatar" src="./images/user.png" alt="User" class="w-7 h-7 rounded-full border-2 border-black/50">
                     <span class="text-xs">Profile</span>
                 </button>

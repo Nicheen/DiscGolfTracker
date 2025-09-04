@@ -118,7 +118,7 @@ async function loadCourses() {
         coursesData.forEach(course => {
             const option = document.createElement("option");
             option.value = course.id;
-            option.textContent = `${course.name} ${course.holes.length}`;
+            option.textContent = `${course.name} (${course.holes.length} holes)`;
             select.appendChild(option);
         });
     }
@@ -282,7 +282,13 @@ async function loadFriends() {
             // Calculate stats from their rounds
             const friendRounds = allFriendRounds?.filter(r => r.user_id === friend.id) || [];
             const scores = friendRounds
-                .map(round => round.final_scores?.[friend.username])
+                .map(round => {
+                    // Use friend's username to get their score
+                    if (round.final_scores && friend.username && round.final_scores[friend.username]) {
+                        return round.final_scores[friend.username];
+                    }
+                    return null;
+                })
                 .filter(score => score != null);
             
             const totalRounds = scores.length;
@@ -308,7 +314,7 @@ async function loadFriends() {
                         </div>
                     </div>
                     <div class="flex flex-col space-y-1 flex-shrink-0">
-                        <button onclick="event.stopPropagation(); addFriendToRound('${friend.username}')" 
+                        <button onclick="event.stopPropagation(); addFriendToRound('${friend.username}; ')" 
                             class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs px-3 py-1.5 rounded-md transition-colors duration-200 font-medium">
                             Invite
                         </button>
@@ -414,7 +420,7 @@ async function showFriendDetails(friend, stats) {
                     ${recentRoundsHTML}
                     
                     <div class="flex space-x-3 mt-6 pt-4 border-t">
-                        <button onclick="addFriendToRound('${friend.username}'); Swal.close();" 
+                        <button onclick="addFriendToRound('${friend.username}'); Swal.close()" 
                             class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-2 px-4 rounded-lg font-medium transition-colors duration-200">
                             Invite to Round
                         </button>
@@ -489,7 +495,7 @@ async function removeFriend(friendId, friendUsername) {
 }
 
 // Add friend to current round players
-function addFriendToRound(friendUsername) {
+async function addFriendToRound(friendUsername) {
     const playersInput = document.getElementById('players');
     if (!playersInput) {
         Swal.fire({
@@ -500,41 +506,114 @@ function addFriendToRound(friendUsername) {
         return;
     }
     
-    const currentPlayers = playersInput.value.split(',').map(p => p.trim()).filter(p => p);
-    
-    if (!currentPlayers.includes(friendUsername)) {
-        currentPlayers.push(friendUsername);
-        playersInput.value = currentPlayers.join(', ');
-        
-        // If there's an active round, update it
-        if (currentRound) {
-            // Add the new player to the current round
-            currentRound.players.push(friendUsername);
-            // Initialize scores for the new player
-            currentRound.scores[friendUsername] = new Array(coursesData.find(c => c.id == currentRound.courseId).holes.length).fill(0);
-            
-            // Recreate the scorecard with the updated players
-            const course = coursesData.find(c => c.id == currentRound.courseId);
-            if (course) {
-                createScorecard(course, currentRound.players);
-                
-                // Update the round in Supabase
-                saveCurrentRoundScores();
-            }
-        }
-        
+    if (!currentRound) {
         Swal.fire({
-            title: "Friend Added to Round!",
-            text: `${friendUsername} has been added to the players list.`,
-            icon: "success",
-            timer: 2000,
-            showConfirmButton: false
+            icon: "warning",
+            title: "No Active Round",
+            text: "Please start a new round first.",
         });
-    } else {
+        return;
+    }
+    
+    // Check if friend is already in the round
+    if (currentRound.usernameToPlayerId && currentRound.usernameToPlayerId[friendUsername]) {
         Swal.fire({
             icon: "info",
             title: "Already Added",
             text: `${friendUsername} is already in the players list.`,
+        });
+        return;
+    }
+    
+    try {
+        // Get the friend's user ID from their username
+        const { data: friendProfile, error: profileError } = await supabase
+            .from('profiles')
+            .select('id, username')
+            .eq('username', friendUsername)
+            .single();
+
+        if (profileError || !friendProfile) {
+            Swal.fire({
+                icon: "error",
+                title: "Friend Not Found",
+                text: `Could not find user ${friendUsername}. They may have changed their username.`,
+            });
+            return;
+        }
+
+        const friendUserId = friendProfile.id;
+        
+        // Update the players input field
+        const currentPlayers = playersInput.value.split(',').map(p => p.trim()).filter(p => p);
+        currentPlayers.push(friendUsername);
+        playersInput.value = currentPlayers.join(', ');
+        
+        // Add the new player to the current round
+        currentRound.playerIds.push(friendUserId);
+        currentRound.playerIdToUsername[friendUserId] = friendUsername;
+        currentRound.usernameToPlayerId[friendUsername] = friendUserId;
+        
+        // Initialize scores for the new player
+        const course = coursesData.find(c => c.id == currentRound.courseId);
+        if (course) {
+            const newPlayerScores = new Array(course.holes.length).fill(0);
+            currentRound.scores[friendUserId] = newPlayerScores;
+            console.log(`Initialized scores for ${friendUsername} (${friendUserId}):`, newPlayerScores);
+        }
+        
+        // Save the updated round to Supabase immediately
+        const { error } = await supabase
+            .from('rounds')
+            .update({
+                players: currentRound.playerIds.map(id => currentRound.playerIdToUsername[id]), // Old format
+                player_ids: currentRound.playerIds, // New format
+                player_usernames: currentRound.playerIdToUsername, // New format
+                scores: currentRound.scores,
+                updated_at: new Date()
+            })
+            .eq('id', currentRound.id);
+
+        if (error) {
+            console.error('Error updating round with new player:', error);
+            Swal.fire({
+                icon: "error",
+                title: "Error",
+                text: "Failed to save the new player to the round.",
+            });
+            // Remove the player from local state if save failed
+            const playerIndex = currentRound.playerIds.indexOf(friendUserId);
+            if (playerIndex > -1) {
+                currentRound.playerIds.splice(playerIndex, 1);
+                delete currentRound.scores[friendUserId];
+                delete currentRound.playerIdToUsername[friendUserId];
+                delete currentRound.usernameToPlayerId[friendUsername];
+            }
+            return;
+        }
+        
+        console.log('Successfully saved new player to round');
+        
+        // Recreate the scorecard with the updated players
+        if (course) {
+            const playerUsernames = currentRound.playerIds.map(id => currentRound.playerIdToUsername[id]);
+            createScorecard(course, playerUsernames);
+        }
+        
+        Swal.fire({
+            title: "Friend Added to Round!",
+            text: `${friendUsername} has been added to the players list and saved.`,
+            icon: "success",
+            timer: 2000,
+            showConfirmButton: false
+        });
+        
+    } catch (error) {
+        console.error('Error adding friend to round:', error);
+        Swal.fire({
+            icon: "error",
+            title: "Error",
+            text: "Failed to add friend to round.",
         });
     }
 }
@@ -742,7 +821,7 @@ async function startRound() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
     
-    // Get current user's username
+    // Get current user's profile
     const { data: profile } = await supabase
         .from('profiles')
         .select('username')
@@ -764,26 +843,58 @@ async function startRound() {
 
     let players = playersText.split(',').map(p => p.trim()).filter(p => p);
     
-    // Replace "You" with actual username
-    players = players.map(player => 
-        player.toLowerCase() === 'you' ? currentUsername : player
-    );
+    // Convert player names to user IDs and create player mapping
+    const playerIds = [];
+    const playerIdToUsername = {};
+    const usernameToPlayerId = {};
+    
+    for (const playerName of players) {
+        if (playerName.toLowerCase() === 'you' || playerName === currentUsername || playerName == "") {
+            // Current user
+            playerIds.push(user.id);
+            playerIdToUsername[user.id] = currentUsername;
+            usernameToPlayerId[currentUsername] = user.id;
+        } else {
+            // Find user by username
+            const { data: playerProfile } = await supabase
+                .from('profiles')
+                .select('id, username')
+                .eq('username', playerName)
+                .single();
+            
+            if (playerProfile) {
+                playerIds.push(playerProfile.id);
+                playerIdToUsername[playerProfile.id] = playerProfile.username;
+                usernameToPlayerId[playerProfile.username] = playerProfile.id;
+            } else {
+                // Handle case where username doesn't exist
+                Swal.fire({
+                    icon: "warning",
+                    title: "Player Not Found",
+                    text: `Player "${playerName}" not found. They may need to create an account first.`,
+                });
+                return;
+            }
+        }
+    }
 
-    // Initialize scores object
+    // Initialize scores object using player IDs
     const initialScores = {};
-    players.forEach(player => {
-        initialScores[player] = new Array(course.holes.length).fill(0);
+    playerIds.forEach(playerId => {
+        initialScores[playerId] = new Array(course.holes.length).fill(0);
     });
 
     try {
-        // Save the round to Supabase as "in_progress"
+        // Save the round to Supabase with both old and new formats for compatibility
         const { data: newRound, error } = await supabase
             .from('rounds')
             .insert({
                 user_id: user.id,
                 course_id: parseInt(courseId),
                 course_name: course.name,
-                players: players, // Now contains actual usernames
+                players: playerIds.map(id => playerIdToUsername[id]), // Keep old format for compatibility
+                player_ids: playerIds,
+                player_usernames: playerIdToUsername, // Store mapping for display
                 scores: initialScores,
                 date: new Date().toLocaleDateString(),
                 status: 'in_progress'
@@ -801,17 +912,21 @@ async function startRound() {
             return;
         }
 
-        // Set current round
+        // Set current round with both IDs and usernames for display
         currentRound = {
             id: newRound.id,
             courseId: courseId,
             courseName: course.name,
-            players: players, // Use actual usernames
+            playerIds: playerIds,
+            playerIdToUsername: playerIdToUsername,
+            usernameToPlayerId: usernameToPlayerId,
             scores: initialScores,
             date: new Date().toLocaleDateString()
         };
         
-        createScorecard(course, players);
+        // Create scorecard using usernames for display but IDs for data
+        const playerUsernames = playerIds.map(id => playerIdToUsername[id]);
+        createScorecard(course, playerUsernames);
         document.getElementById('current-course').textContent = course.name;
         document.getElementById('scorecard').style.display = 'block';
 
@@ -881,15 +996,16 @@ function createScorecard(course, players) {
     container.appendChild(playersArea);
     
     // Totals section
+    // Replace the existing totals section with this more compact version
     const totalsSection = document.createElement('div');
-    totalsSection.className = 'bg-green-600 text-white rounded-xl p-4 mt-4';
+    totalsSection.className = 'bg-green-600 text-white rounded-xl p-3 mt-4';
     totalsSection.innerHTML = `
-        <h3 class="text-lg font-bold mb-3 text-center">Round Totals</h3>
-        <div id="totals-grid" class="grid gap-3" style="grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));">
+        <h3 class="text-base font-bold mb-2 text-center">Round Totals</h3>
+        <div id="totals-grid" class="grid gap-2" style="grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));">
             ${players.map(player => `
-                <div class="text-center">
-                    <div class="font-semibold">${player}</div>
-                    <div id="total-${player.replace(/\s+/g, '-')}" class="text-2xl font-bold">-</div>
+                <div class="text-center bg-white/10 rounded-lg p-2">
+                    <div class="font-medium text-xs truncate" title="${player}">${player.length > 8 ? player.substring(0, 8) + '...' : player}</div>
+                    <div id="total-${player.replace(/\s+/g, '-')}" class="text-lg font-bold">-</div>
                 </div>
             `).join('')}
         </div>
@@ -953,7 +1069,7 @@ async function updateHoleDisplay(course, players, holeIndex) {
     const createPlayerCard = async (player) => {
         const currentScore = currentRound && currentRound.scores[player] ? 
             currentRound.scores[player][holeIndex] : 0;
-        const displayScore = currentScore > 0 ? currentScore : '';
+        const displayScore = currentScore > 0 ? currentScore : '-';
         const scoreDiff = currentScore > 0 ? currentScore - par : 0;
         const scoreText = scoreDiff === 0 ? 'E' : scoreDiff > 0 ? `+${scoreDiff}` : scoreDiff.toString();
         
@@ -1083,6 +1199,67 @@ async function getPlayerProfilePicture(playerName) {
         return fallback;
     }
 }
+// Helper function to get user ID from username
+async function getUserIdFromUsername(username) {
+    try {
+        const { data, error } = await supabase
+            .from('profiles')
+            .select('id')
+            .eq('username', username)
+            .single();
+        
+        if (error || !data) {
+            console.warn(`Could not find user ID for username: ${username}`);
+            return null;
+        }
+        
+        return data.id;
+    } catch (error) {
+        console.error('Error getting user ID:', error);
+        return null;
+    }
+}
+
+// Helper function to get username from user ID
+async function getUsernameFromId(userId) {
+    try {
+        const { data, error } = await supabase
+            .from('profiles')
+            .select('username')
+            .eq('id', userId)
+            .single();
+        
+        if (error || !data) {
+            console.warn(`Could not find username for user ID: ${userId}`);
+            return `User_${userId.substring(0, 8)}`;
+        }
+        
+        return data.username;
+    } catch (error) {
+        console.error('Error getting username:', error);
+        return `User_${userId.substring(0, 8)}`;
+    }
+}
+
+// Convert usernames to user IDs for storage
+async function convertPlayersToIds(playerUsernames) {
+    const playerIds = {};
+    const usernames = {};
+    
+    for (const username of playerUsernames) {
+        const userId = await getUserIdFromUsername(username);
+        if (userId) {
+            playerIds[userId] = username; // Map ID to current username
+            usernames[username] = userId; // Map username to ID for lookup
+        } else {
+            // If we can't find the user, store as guest player
+            playerIds[`guest_${username}`] = username;
+            usernames[username] = `guest_${username}`;
+        }
+    }
+    
+    return { playerIds, usernames };
+}
 
 // Navigation functions
 function changeHole(direction) {
@@ -1101,7 +1278,14 @@ function goToHole(holeIndex) {
 }
 
 async function updateScore(player, holeIndex, change) {
-    if (!currentRound || !currentRound.scores[player]) return;
+    if (!currentRound) return;
+    
+    // Convert username to player ID for data storage
+    const playerId = currentRound.usernameToPlayerId[player];
+    if (!playerId || !currentRound.scores[playerId]) {
+        console.error('No current round or player scores not found:', player, playerId);
+        return;
+    }
 
     // Find the course to get par information
     const course = coursesData.find(c => c.id == currentRound.courseId);
@@ -1109,16 +1293,24 @@ async function updateScore(player, holeIndex, change) {
     
     const par = course.holes[holeIndex];
 
+    // Ensure the scores array exists and has the right length
+    if (!Array.isArray(currentRound.scores[playerId])) {
+        currentRound.scores[playerId] = new Array(course.holes.length).fill(0);
+    }
+    
+    // Make sure the array is long enough
+    while (currentRound.scores[playerId].length < course.holes.length) {
+        currentRound.scores[playerId].push(0);
+    }
+
     // Get current score
-    let currentScore = currentRound.scores[player][holeIndex];
+    let currentScore = currentRound.scores[playerId][holeIndex];
 
     // Calculate new score
     let newScore;
     if (currentScore === 0 || currentScore === '') {
-        // If score is uninitialized, set to par + change
         newScore = par + change;
     } else {
-        // Otherwise, increment/decrement normally
         newScore = parseInt(currentScore) + change;
     }
 
@@ -1127,9 +1319,11 @@ async function updateScore(player, holeIndex, change) {
     if (newScore > 10) newScore = 10;
 
     // Update local state
-    currentRound.scores[player][holeIndex] = newScore;
+    currentRound.scores[playerId][holeIndex] = newScore;
+    
+    console.log(`Updated ${player} (${playerId}) hole ${holeIndex + 1} to ${newScore}`);
 
-    // Update display
+    // Update display (still use username for UI)
     const scoreElement = document.getElementById(`score-${player}-${holeIndex}`);
     if (scoreElement) {
         scoreElement.textContent = newScore;
@@ -1139,7 +1333,6 @@ async function updateScore(player, holeIndex, change) {
     const scoreDiff = newScore - par;
     const scoreText = scoreDiff === 0 ? 'E' : scoreDiff > 0 ? `+${scoreDiff}` : scoreDiff.toString();
     
-    // Find and update the score difference text
     const playerCard = scoreElement.closest('.bg-white');
     if (playerCard) {
         const scoreInfo = playerCard.querySelector('.text-sm.text-gray-600');
@@ -1151,20 +1344,20 @@ async function updateScore(player, holeIndex, change) {
     // Update totals
     updateTotals();
 
-    // Save to Supabase (debounced to avoid too many requests)
+    // Save to Supabase
     await saveCurrentRoundScores();
 }
 
 // Save current round scores to Supabase
 async function saveCurrentRoundScores() {
-    if (!currentRound || pendingScoreUpdates) return;
+    if (!currentRound) return;
 
-    pendingScoreUpdates = true;
-    
     // Debounce saves to avoid too many requests
     clearTimeout(saveTimeout);
     saveTimeout = setTimeout(async () => {
         try {
+            console.log('Saving round scores to database:', currentRound.scores);
+            
             const { error } = await supabase
                 .from('rounds')
                 .update({
@@ -1175,22 +1368,23 @@ async function saveCurrentRoundScores() {
 
             if (error) {
                 console.error('Error saving scores:', error);
+            } else {
+                console.log('Scores saved successfully');
             }
         } catch (error) {
             console.error('Error saving round scores:', error);
-        } finally {
-            pendingScoreUpdates = false;
         }
-    }, 2000); // Increased to 2 seconds to reduce API calls
+    }, 1000); // Save after 1 second of no changes
 }
 
 function updateTotals() {
     if (!currentRound) return;
     
-    Object.keys(currentRound.scores).forEach(player => {
-        const scores = currentRound.scores[player];
+    Object.keys(currentRound.scores).forEach(playerId => {
+        const scores = currentRound.scores[playerId];
         const total = scores.reduce((sum, score) => sum + (parseInt(score) || 0), 0);
-        const totalElement = document.getElementById(`total-${player.replace(/\s+/g, '-')}`);
+        const username = currentRound.playerIdToUsername[playerId];
+        const totalElement = document.getElementById(`total-${username.replace(/\s+/g, '-')}`);
         if (totalElement) {
             totalElement.textContent = total || '-';
         }
@@ -1258,20 +1452,29 @@ async function finishRound() {
     if (!user) return;
 
     try {
-        // Calculate final scores
-        const finalScores = {};
-        Object.keys(currentRound.scores).forEach(player => {
-            const scores = currentRound.scores[player];
-            finalScores[player] = scores.reduce((sum, score) => sum + (parseInt(score) || 0), 0);
+        // Calculate final scores - we need to store them by username for the existing schema
+        const finalScoresByUsername = {};
+        
+        Object.keys(currentRound.scores).forEach(playerId => {
+            const scores = currentRound.scores[playerId];
+            const totalScore = scores.reduce((sum, score) => sum + (parseInt(score) || 0), 0);
+            
+            // Get username for this player ID
+            const username = currentRound.playerIdToUsername[playerId];
+            if (username) {
+                finalScoresByUsername[username] = totalScore;
+            }
         });
 
-        // Update the round in Supabase with final scores and completed status
+        // Update the round in Supabase with only the columns that exist
         const { error } = await supabase
             .from('rounds')
             .update({
-                final_scores: finalScores,
+                final_scores: finalScoresByUsername, // Store by username as per existing schema
                 status: 'completed',
-                players: currentRound.players,
+                player_ids: currentRound.playerIds,
+                player_usernames: currentRound.playerIdToUsername,
+                players: Object.values(currentRound.playerIdToUsername), // Array of usernames for compatibility
                 updated_at: new Date()
             })
             .eq('id', currentRound.id);
@@ -1352,18 +1555,33 @@ async function loadHistory() {
             const item = document.createElement('div');
             item.className = 'history-item';
 
-            const playerScores = Object.entries(round.final_scores || {})
-                .map(([player, score]) => `${player}: ${score}`)
-                .join(' | ');
-
             // Find course data for par calculation
             const course = coursesData.find(c => c.id == round.course_id);
             const par = course ? course.holes.reduce((a, b) => a + b, 0) : 0;
             
-            // Get current user's score
-            const yourScore = round.final_scores?.[currentUsername] || 0;
-            const scoreDiff = yourScore - par;
-            const scoreDiffText = scoreDiff > 0 ? `+${scoreDiff}` : scoreDiff === 0 ? 'E' : scoreDiff.toString();
+            // Get current user's score - check both formats
+            let yourScore = 0;
+            if (round.final_scores_by_id && round.final_scores_by_id[user.id]) {
+                yourScore = round.final_scores_by_id[user.id];
+            } else if (round.final_scores && currentUsername && round.final_scores[currentUsername]) {
+                yourScore = round.final_scores[currentUsername];
+            }
+
+            // Display player scores - use the player_usernames mapping if available
+            let playerScores = '';
+            if (round.player_usernames && round.final_scores_by_id) {
+                playerScores = Object.entries(round.final_scores_by_id)
+                    .map(([playerId, score]) => {
+                        const username = round.player_usernames[playerId] || 'Unknown';
+                        return `${username}: ${score}`;
+                    })
+                    .join(' | ');
+            } else if (round.final_scores) {
+                // Fallback to old format
+                playerScores = Object.entries(round.final_scores)
+                    .map(([player, score]) => `${player}: ${score}`)
+                    .join(' | ');
+            }
 
             item.innerHTML = `
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
@@ -1415,13 +1633,26 @@ async function updateProgress() {
         }
 
         // Filter rounds where user actually played
-        const yourRounds = rounds.filter(round => 
-            round.final_scores && round.final_scores[currentUsername]
-        );
+        const yourRounds = rounds.filter(round => {
+            if (round.final_scores_by_id && round.final_scores_by_id[user.id]) {
+                return true;
+            }
+            if (round.final_scores && currentUsername && round.final_scores[currentUsername]) {
+                return true;
+            }
+            return false;
+        });
         
         document.getElementById('total-rounds').textContent = yourRounds.length;
         
         if (yourRounds.length > 0) {
+            // In updateProgress, after getting rounds:
+            const yourRounds = rounds.filter(round => {
+                // Check if user played in this round by checking final_scores for their username
+                return round.final_scores && currentUsername && round.final_scores[currentUsername] != null;
+            });
+
+            // Get scores
             const scores = yourRounds.map(round => round.final_scores[currentUsername]);
             const avgScore = (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1);
             const bestScore = Math.min(...scores);
@@ -1508,57 +1739,105 @@ async function loadCurrentRound() {
             .limit(1)
             .single();
 
-        if (error && error.code !== 'PGRST116') { // PGRST116 is "no rows returned"
+        if (error && error.code !== 'PGRST116') {
             console.error('Error loading current round:', error);
             return;
         }
 
         if (inProgressRound) {
-            // Double-check that the round is actually in progress and not completed
             if (inProgressRound.status !== 'in_progress') {
                 console.log('Round found but status is not in_progress, skipping...');
                 return;
             }
 
-            // Restore the current round
             const course = coursesData.find(c => c.id == inProgressRound.course_id);
             if (course) {
+                // Handle both old and new data formats
+                let playerIds, playerIdToUsername, usernameToPlayerId;
+                
+                if (inProgressRound.player_ids && inProgressRound.player_usernames) {
+                    // New format
+                    playerIds = inProgressRound.player_ids;
+                    playerIdToUsername = inProgressRound.player_usernames;
+                    usernameToPlayerId = {};
+                    Object.keys(playerIdToUsername).forEach(id => {
+                        usernameToPlayerId[playerIdToUsername[id]] = id;
+                    });
+                } else {
+                    // Old format - need to convert usernames to IDs
+                    const players = inProgressRound.players || [];
+                    playerIds = [];
+                    playerIdToUsername = {};
+                    usernameToPlayerId = {};
+                    
+                    for (const playerName of players) {
+                        if (playerName === user.email) {
+                            // Current user
+                            playerIds.push(user.id);
+                            playerIdToUsername[user.id] = playerName;
+                            usernameToPlayerId[playerName] = user.id;
+                        } else {
+                            // Look up other players
+                            const { data: playerProfile } = await supabase
+                                .from('profiles')
+                                .select('id, username')
+                                .eq('username', playerName)
+                                .single();
+                            
+                            if (playerProfile) {
+                                playerIds.push(playerProfile.id);
+                                playerIdToUsername[playerProfile.id] = playerProfile.username;
+                                usernameToPlayerId[playerProfile.username] = playerProfile.id;
+                            }
+                        }
+                    }
+                }
+
                 currentRound = {
                     id: inProgressRound.id,
                     courseId: inProgressRound.course_id,
                     courseName: inProgressRound.course_name,
-                    players: inProgressRound.players,
+                    playerIds: playerIds,
+                    playerIdToUsername: playerIdToUsername,
+                    usernameToPlayerId: usernameToPlayerId,
                     scores: inProgressRound.scores,
                     date: inProgressRound.date
                 };
 
-                createScorecard(course, inProgressRound.players);
+                // Update the players input field
+                const playerUsernames = playerIds.map(id => playerIdToUsername[id]).filter(name => name);
+                document.getElementById('players').value = playerUsernames.join(', ');
+
+                createScorecard(course, playerUsernames);
                 document.getElementById('current-course').textContent = course.name;
                 document.getElementById('scorecard').style.display = 'block';
 
                 // Restore scores to the UI
-                Object.keys(currentRound.scores).forEach(player => {
-                    currentRound.scores[player].forEach((score, holeIndex) => {
-                        if (score && score > 0) {
-                            const scoreElement = document.getElementById(`score-${player}-${holeIndex}`);
-                            if (scoreElement) {
-                                scoreElement.textContent = score;
+                Object.keys(currentRound.scores).forEach(playerId => {
+                    const username = currentRound.playerIdToUsername[playerId];
+                    if (username && currentRound.scores[playerId]) {
+                        currentRound.scores[playerId].forEach((score, holeIndex) => {
+                            if (score && score > 0) {
+                                const scoreElement = document.getElementById(`score-${username}-${holeIndex}`);
+                                if (scoreElement) {
+                                    scoreElement.textContent = score;
+                                }
                             }
-                        }
-                    });
+                        });
+                    }
                 });
 
                 updateTotals();
 
                 Swal.fire({
                     title: "Round Resumed",
-                    text: `Continuing your round at ${course.name}`,
+                    text: `Continuing your round at ${course.name} with ${playerUsernames.length} players`,
                     icon: "info",
-                    timer: 3000
+                    timer: 3000,
+                    showConfirmButton: false
                 });
             }
         } else {
-            // Ensure scorecard is hidden if no active round
             document.getElementById('scorecard').style.display = 'none';
             currentRound = null;
         }
@@ -1599,9 +1878,15 @@ async function viewRoundDetails(roundId) {
         
         if (course) {
             detailsHTML += '<table style="width: 100%; border-collapse: collapse; margin: 10px 0;">';
+            // Determine which format to use
+            const useNewFormat = round.player_ids && round.player_usernames && round.scores;
+            const displayPlayers = useNewFormat 
+                ? round.player_ids.map(id => round.player_usernames[id] || `User_${id.substring(0, 8)}`)
+                : round.players;
+
             detailsHTML += '<tr style="background: #f8f9fa;"><th style="border: 1px solid #ddd; padding: 8px;">Hole</th>';
-            
-            round.players.forEach(player => {
+
+            displayPlayers.forEach(player => {
                 detailsHTML += `<th style="border: 1px solid #ddd; padding: 8px;">${player}</th>`;
             });
             detailsHTML += '<th style="border: 1px solid #ddd; padding: 8px;">Par</th></tr>';
@@ -1609,10 +1894,17 @@ async function viewRoundDetails(roundId) {
             for (let i = 0; i < course.holes.length; i++) {
                 detailsHTML += `<tr><td style="border: 1px solid #ddd; padding: 8px; text-align: center;">${i + 1}</td>`;
                 
-                round.players.forEach(player => {
-                    const score = round.scores[player][i] || '-';
-                    detailsHTML += `<td style="border: 1px solid #ddd; padding: 8px; text-align: center;">${score}</td>`;
-                });
+                if (useNewFormat) {
+                    round.player_ids.forEach(playerId => {
+                        const score = round.scores[playerId]?.[i] || '-';
+                        detailsHTML += `<td style="border: 1px solid #ddd; padding: 8px; text-align: center;">${score}</td>`;
+                    });
+                } else {
+                    displayPlayers.forEach(player => {
+                        const score = round.scores[player]?.[i] || '-';
+                        detailsHTML += `<td style="border: 1px solid #ddd; padding: 8px; text-align: center;">${score}</td>`;
+                    });
+                }
                 
                 detailsHTML += `<td style="border: 1px solid #ddd; padding: 8px; text-align: center; font-weight: bold;">${course.holes[i]}</td></tr>`;
             }
