@@ -19,6 +19,34 @@ body {
     padding: 15px;
 }
 
+/* Add this to your style.css to override the old friend card styles */
+.friend-card-new {
+    /* Reset any inherited styles */
+    all: unset;
+    /* Apply new styles */
+    display: block !important;
+    background: white !important;
+    border-radius: 0.75rem !important;
+    padding: 1rem !important;
+    box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1) !important;
+    border: 1px solid #f3f4f6 !important;
+    transition: all 0.2s ease !important;
+    cursor: pointer !important;
+    word-wrap: normal !important;
+    overflow-wrap: normal !important;
+}
+
+.friend-card-new:hover {
+    box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1) !important;
+    border-color: #c7d2fe !important;
+    transform: none !important;
+}
+
+/* Hide old friend cards if any exist */
+.friend-card {
+    display: none !important;
+}
+
 .login-card {
     background: rgba(255, 255, 255, 0.95);
     border-radius: 20px;
@@ -484,4 +512,68 @@ input:focus, select:focus, textarea:focus {
 /* Prevent horizontal overflow */
 html, body {
     overflow-x: hidden;
+}
+
+/* Fix navigation buttons - override any conflicts */
+.nav-btn {
+    all: unset !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    gap: 0.25rem !important;
+    padding: 0.5rem !important;
+    border-radius: 0.5rem !important;
+    font-weight: 500 !important;
+    transition: all 0.2s ease !important;
+    cursor: pointer !important;
+    text-align: center !important;
+    min-width: 60px !important;
+    color: #6b7280 !important;
+}
+
+.nav-btn:hover {
+    color: #4f46e5 !important;
+    background-color: #eef2ff !important;
+}
+
+.nav-btn.active,
+.nav-btn.bg-indigo-600 {
+    background: linear-gradient(135deg, #4f46e5, #7c3aed) !important;
+    color: white !important;
+}
+
+.nav-btn span {
+    display: block !important;
+    line-height: 1 !important;
+}
+
+/* Ensure the navigation container works properly */
+nav {
+    position: fixed !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    background: rgba(255, 255, 255, 0.95) !important;
+    backdrop-filter: blur(10px) !important;
+    border-top: 1px solid #e5e7eb !important;
+    padding: 0.5rem !important;
+    z-index: 1000 !important;
+    box-shadow: 0 -5px 20px rgba(0, 0, 0, 0.1) !important;
+}
+
+nav > div {
+    display: flex !important;
+    justify-content: space-around !important;
+    align-items: center !important;
+    max-width: 1536px !important;
+    margin: 0 auto !important;
+}
+
+/* Fix the profile avatar in navigation */
+#user-avatar {
+    width: 1.75rem !important;
+    height: 1.75rem !important;
+    border-radius: 50% !important;
+    border: 2px solid rgba(0, 0, 0, 0.5) !important;
+    object-fit: cover !important;
 }

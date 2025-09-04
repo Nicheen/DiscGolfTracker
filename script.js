@@ -9,10 +9,17 @@ const supabase = createClient(supabaseUrl, supabaseKey, {
   }
 });
 
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+const COURSES_CACHE_DURATION = 10 * 60 * 1000; // 10 minutes
+
 let selectedProfilePicture = null;
-let profilePictureCache = {};
 let coursesData = [];
 let currentRound = null;
+let profilePictureCache = {};
+let coursesCacheTime = null;
+let pendingScoreUpdates = false;
+let saveTimeout;
+let searchTimeout;
 
 async function signUp() {
     const email = document.getElementById("login-email").value;
@@ -81,16 +88,19 @@ async function signOut() {
 // Load profile data when logged in
 
 async function loadCourses() {
-    // Load profile from DB
+    // Check if we have recent cached data
+    if (coursesData.length > 0 && coursesCacheTime && 
+        (Date.now() - coursesCacheTime < COURSES_CACHE_DURATION)) {
+        return;
+    }
+
     const { data, error } = await supabase
         .from("courses")
-        .select("id, name, holes, distances")
+        .select("id, name, holes, distances");
     
     if (error) {
         console.error("Error loading courses:", error);
         return [];
-    } else {
-        console.log(data);
     }
 
     coursesData = data.map(course => ({
@@ -100,15 +110,19 @@ async function loadCourses() {
         distances: course.distances.split(',').map(Number)
     }));
 
+    coursesCacheTime = Date.now();
+
+    // Only update UI if select exists
     const select = document.getElementById("course");
-    console.log(coursesData);
-    coursesData.forEach(course => {
-        const option = document.createElement("option");
-        option.value = course.id;
-        option.textContent = `${course.name} ${course.holes.length}`;
-        select.appendChild(option);
-    });
-} 
+    if (select && select.children.length <= 1) { // Only default option
+        coursesData.forEach(course => {
+            const option = document.createElement("option");
+            option.value = course.id;
+            option.textContent = `${course.name} ${course.holes.length}`;
+            select.appendChild(option);
+        });
+    }
+}
 
 // ===== FRIENDS FUNCTIONALITY =====
 
@@ -213,7 +227,7 @@ async function loadFriends() {
     container.innerHTML = '<div style="text-align: center;">Loading friends...</div>';
 
     try {
-        // First get all friendships for the current user
+        // First get friendships
         const { data: friendships, error: friendshipError } = await supabase
             .from('friendships')
             .select('friend_id, user_id')
@@ -230,18 +244,18 @@ async function loadFriends() {
             container.innerHTML = `
                 <div style="text-align: center; color: #6c757d; margin: 40px 0;">
                     <p>No friends added yet.</p>
-                    <p>Add friends by their username to track their progress and invite them to rounds!</p>
+                    <p>Add friends by their username to track their progress!</p>
                 </div>
             `;
             return;
         }
 
-        // Get the friend IDs (excluding current user)
+        // Get friend IDs
         const friendIds = friendships.map(f => 
             f.user_id === user.id ? f.friend_id : f.user_id
         );
 
-        // Now get the profile data for all friends
+        // Get friend profiles in one query
         const { data: friendProfiles, error: profileError } = await supabase
             .from('profiles')
             .select('id, username, bio, profile_picture_base64')
@@ -253,60 +267,177 @@ async function loadFriends() {
             return;
         }
 
+        // Get all rounds for these friends in one query
+        const { data: allFriendRounds } = await supabase
+            .from('rounds')
+            .select('user_id, final_scores')
+            .in('user_id', friendIds)
+            .eq('status', 'completed');
+
         container.innerHTML = '';
+        container.className = 'space-y-3';
 
-        // Display each friend
-        for (const friend of friendProfiles) {
-            // Get friend's game stats
-            const { data: friendRounds } = await supabase
-                .from('rounds')
-                .select('final_scores')
-                .eq('user_id', friend.id);
-
-            let totalRounds = 0;
-            let avgScore = '-';
-            let bestScore = '-';
-
-            if (friendRounds && friendRounds.length > 0) {
-                // Calculate stats from their rounds
-                const scores = friendRounds
-                    .map(round => {
-                        const finalScores = round.final_scores;
-                        return finalScores && finalScores[friend.username] ? finalScores[friend.username] : null;
-                    })
-                    .filter(score => score != null);
-                
-                if (scores.length > 0) {
-                    totalRounds = scores.length;
-                    avgScore = (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1);
-                    bestScore = Math.min(...scores);
-                }
-            }
+        // Display each friend with their stats
+        friendProfiles.forEach(friend => {
+            // Calculate stats from their rounds
+            const friendRounds = allFriendRounds?.filter(r => r.user_id === friend.id) || [];
+            const scores = friendRounds
+                .map(round => round.final_scores?.[friend.username])
+                .filter(score => score != null);
+            
+            const totalRounds = scores.length;
+            const avgScore = totalRounds > 0 ? (scores.reduce((a, b) => a + b, 0) / totalRounds).toFixed(1) : '-';
+            const bestScore = totalRounds > 0 ? Math.min(...scores) : '-';
 
             const card = document.createElement('div');
-            card.className = 'friend-card';
-            
-            // Update the card creation:
             const profilePicSrc = friend.profile_picture_base64 || "./images/user.png";
+            card.className = 'friend-card-new bg-white rounded-xl p-4 shadow-md hover:shadow-lg transition-all duration-200 cursor-pointer border border-gray-100 hover:border-indigo-200';
+            card.onclick = () => showFriendDetails(friend, { totalRounds, avgScore, bestScore });
+
             card.innerHTML = `
-                <div style="margin-bottom: 10px;">
-                    <img src="${profilePicSrc}" alt="${friend.username}" 
-                        style="width: 60px; height: 60px; border-radius: 50%; border: 3px solid #667eea; object-fit: cover;">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center space-x-3">
+                        <img src="${profilePicSrc}" alt="${friend.username}" 
+                            class="w-12 h-12 rounded-full border-2 border-indigo-200 object-cover flex-shrink-0">
+                        <div class="min-w-0 flex-1">
+                            <h4 class="font-semibold text-gray-900 text-sm truncate">${friend.username}</h4>
+                            <p class="text-xs text-gray-500 truncate">${friend.bio || 'No bio set'}</p>
+                            <div class="flex items-center space-x-3 mt-1 text-xs text-gray-600">
+                                <span>${totalRounds} rounds</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex flex-col space-y-1 flex-shrink-0">
+                        <button onclick="event.stopPropagation(); addFriendToRound('${friend.username}')" 
+                            class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs px-3 py-1.5 rounded-md transition-colors duration-200 font-medium">
+                            Invite
+                        </button>
+                        <button onclick="event.stopPropagation(); removeFriend('${friend.id}', '${friend.username}')" 
+                            class="bg-red-500 hover:bg-red-600 text-white text-xs px-3 py-1.5 rounded-md transition-colors duration-200 font-medium">
+                            Remove
+                        </button>
+                    </div>
                 </div>
-                <h4>${friend.username}</h4>
-                <p style="color: #6c757d; margin: 5px 0; font-size: 0.9em;">${friend.bio || 'No bio set'}</p>
-                <p><strong>${totalRounds}</strong> rounds played</p>
-                <p>Avg: <strong>${avgScore}</strong></p>
-                <p>Best: <strong>${bestScore}</strong></p>
-                <button class="btn" style="margin-top: 10px; padding: 8px 15px;" onclick="addFriendToRound('${friend.username}')">Invite to Round</button>
-                <button class="btn" style="margin-top: 5px; padding: 6px 12px; background: #dc3545;" onclick="removeFriend('${friend.id}', '${friend.username}')">Remove</button>
             `;
             
             container.appendChild(card);
-        }
+        });
     } catch (error) {
         console.error('Error loading friends:', error);
         container.innerHTML = '<div style="text-align: center; color: #dc3545;">Error loading friends</div>';
+    }
+}
+
+// Add this new function to script.js
+async function showFriendDetails(friend, stats) {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    try {
+        // Get detailed round history for this friend
+        const { data: friendRounds, error } = await supabase
+            .from('rounds')
+            .select('*')
+            .eq('user_id', friend.id)
+            .eq('status', 'completed')
+            .order('created_at', { ascending: false })
+            .limit(10);
+
+        if (error) {
+            console.error('Error loading friend details:', error);
+        }
+
+        const rounds = friendRounds || [];
+        const recentRounds = rounds.slice(0, 5);
+
+        let recentRoundsHTML = '';
+        if (recentRounds.length > 0) {
+            recentRoundsHTML = `
+                <div class="mt-6">
+                    <h4 class="font-semibold text-gray-800 mb-3">Recent Rounds</h4>
+                    <div class="space-y-2">
+                        ${recentRounds.map(round => {
+                            const score = round.final_scores?.[friend.username] || 'N/A';
+                            const course = coursesData.find(c => c.id == round.course_id);
+                            const par = course ? course.holes.reduce((a, b) => a + b, 0) : 0;
+                            const scoreDiff = typeof score === 'number' && par > 0 ? score - par : null;
+                            const scoreDiffText = scoreDiff === null ? '' : scoreDiff > 0 ? `(+${scoreDiff})` : scoreDiff === 0 ? '(E)' : `(${scoreDiff})`;
+                            
+                            return `
+                                <div class="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                                    <div>
+                                        <div class="font-medium text-sm">${round.course_name}</div>
+                                        <div class="text-xs text-gray-500">${round.date}</div>
+                                    </div>
+                                    <div class="text-right">
+                                        <div class="font-semibold text-sm">${score}</div>
+                                        ${scoreDiffText ? `<div class="text-xs text-gray-600">${scoreDiffText}</div>` : ''}
+                                    </div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                </div>
+            `;
+        }
+
+        const profilePicSrc = friend.profile_picture_base64 || "./images/user.png";
+        
+        Swal.fire({
+            title: '',
+            html: `
+                <div class="text-left">
+                    <div class="flex items-center space-x-4 mb-6">
+                        <img src="${profilePicSrc}" alt="${friend.username}" 
+                            class="w-16 h-16 rounded-full border-3 border-indigo-200 object-cover">
+                        <div>
+                            <h3 class="text-xl font-bold text-gray-900">${friend.username}</h3>
+                            <p class="text-gray-600 text-sm">${friend.bio || 'No bio set'}</p>
+                        </div>
+                    </div>
+                    
+                    <div class="grid grid-cols-3 gap-4 mb-6">
+                        <div class="text-center p-3 bg-indigo-50 rounded-lg">
+                            <div class="text-2xl font-bold text-indigo-600">${stats.totalRounds}</div>
+                            <div class="text-xs text-gray-600">Total Rounds</div>
+                        </div>
+                        <div class="text-center p-3 bg-green-50 rounded-lg">
+                            <div class="text-2xl font-bold text-green-600">${stats.avgScore}</div>
+                            <div class="text-xs text-gray-600">Average Score</div>
+                        </div>
+                        <div class="text-center p-3 bg-orange-50 rounded-lg">
+                            <div class="text-2xl font-bold text-orange-600">${stats.bestScore}</div>
+                            <div class="text-xs text-gray-600">Best Score</div>
+                        </div>
+                    </div>
+                    
+                    ${recentRoundsHTML}
+                    
+                    <div class="flex space-x-3 mt-6 pt-4 border-t">
+                        <button onclick="addFriendToRound('${friend.username}'); Swal.close();" 
+                            class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-2 px-4 rounded-lg font-medium transition-colors duration-200">
+                            Invite to Round
+                        </button>
+                        <button onclick="removeFriend('${friend.id}', '${friend.username}');" 
+                            class="bg-red-500 hover:bg-red-600 text-white py-2 px-4 rounded-lg font-medium transition-colors duration-200">
+                            Remove Friend
+                        </button>
+                    </div>
+                </div>
+            `,
+            showConfirmButton: false,
+            showCloseButton: true,
+            width: '90%',
+            maxWidth: '500px'
+        });
+
+    } catch (error) {
+        console.error('Error showing friend details:', error);
+        Swal.fire({
+            icon: "error",
+            title: "Error",
+            text: "Could not load friend details",
+        });
     }
 }
 
@@ -419,77 +550,76 @@ async function searchUsers() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    try {
-        // Search for users by username (case insensitive)
-        const { data: profiles, error } = await supabase
-            .from('profiles')
-            .select('id, username, bio')
-            .ilike('username', `%${searchTerm}%`)
-            .neq('id', user.id) // Exclude current user
-            .limit(5);
+    // Debounce search requests
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(async () => {
+        try {
+            const { data: profiles, error } = await supabase
+                .from('profiles')
+                .select('id, username, bio')
+                .ilike('username', `%${searchTerm}%`)
+                .neq('id', user.id)
+                .limit(5);
 
-        if (error) {
-            console.error('Error searching users:', error);
-            return;
-        } else {
-            console.log(profiles);
-        }
-
-        let resultsContainer = document.getElementById('user-search-results');
-        if (!resultsContainer) {
-            // Create search results container if it doesn't exist
-            resultsContainer = document.createElement('div');
-            resultsContainer.id = 'user-search-results';
-            document.getElementById('friend-username').parentNode.appendChild(resultsContainer);
-        }
-
-        resultsContainer.innerHTML = '';
-
-        if (profiles && profiles.length > 0) {
-            // Check which users are already friends
-            const profileIds = profiles.map(p => p.id);
-            const { data: existingFriendships } = await supabase
-                .from('friendships')
-                .select('friend_id, user_id')
-                .or(`and(user_id.eq.${user.id},friend_id.in.(${profileIds.join(',')})),and(friend_id.eq.${user.id},user_id.in.(${profileIds.join(',')}))`);
-
-            const friendIds = new Set();
-            if (existingFriendships) {
-                existingFriendships.forEach(f => {
-                    friendIds.add(f.user_id === user.id ? f.friend_id : f.user_id);
-                });
+            if (error) {
+                console.error('Error searching users:', error);
+                return;
             }
 
-            profiles.forEach(profile => {
-                const resultItem = document.createElement('div');
-                resultItem.className = 'search-result-item';
-                
-                const isAlreadyFriend = friendIds.has(profile.id);
-                
-                resultItem.innerHTML = `
-                    <div>
-                        <strong>${profile.username}</strong>
-                        <div style="font-size: 0.9em; color: #6c757d;">${profile.bio || 'No bio'}</div>
-                    </div>
-                    <div>
-                        ${isAlreadyFriend 
-                            ? '<span style="color: #28a745; font-weight: bold;">✓ Friends</span>'
-                            : `<button class="btn" onclick="sendFriendRequest('${profile.id}', '${profile.username}')" 
-                                      style="padding: 5px 10px; font-size: 0.9em;">Add Friend</button>`
-                        }
-                    </div>
-                `;
-                
-                resultsContainer.appendChild(resultItem);
-            });
-        } else {
-            resultsContainer.innerHTML = '<div style="text-align: center; color: #6c757d; padding: 10px;">No users found matching "' + searchTerm + '"</div>';
-        }
-    } catch (error) {
-        console.error('Error searching users:', error);
-    }
-}
+            // Rest of the function remains the same...
+            let resultsContainer = document.getElementById('user-search-results');
+            if (!resultsContainer) {
+                resultsContainer = document.createElement('div');
+                resultsContainer.id = 'user-search-results';
+                document.getElementById('friend-username').parentNode.appendChild(resultsContainer);
+            }
 
+            resultsContainer.innerHTML = '';
+
+            if (profiles && profiles.length > 0) {
+                const profileIds = profiles.map(p => p.id);
+                const { data: existingFriendships } = await supabase
+                    .from('friendships')
+                    .select('friend_id, user_id')
+                    .or(`and(user_id.eq.${user.id},friend_id.in.(${profileIds.join(',')})),and(friend_id.eq.${user.id},user_id.in.(${profileIds.join(',')}))`);
+
+                const friendIds = new Set();
+                if (existingFriendships) {
+                    existingFriendships.forEach(f => {
+                        friendIds.add(f.user_id === user.id ? f.friend_id : f.user_id);
+                    });
+                }
+
+                profiles.forEach(profile => {
+                    const resultItem = document.createElement('div');
+                    resultItem.className = 'search-result-item';
+                    
+                    const isAlreadyFriend = friendIds.has(profile.id);
+                    
+                    resultItem.innerHTML = `
+                        <div>
+                            <strong>${profile.username}</strong>
+                            <div style="font-size: 0.9em; color: #6c757d;">${profile.bio || 'No bio'}</div>
+                        </div>
+                        <div>
+                            ${isAlreadyFriend 
+                                ? '<span style="color: #28a745; font-weight: bold;">✓ Friends</span>'
+                                : `<button class="btn" onclick="sendFriendRequest('${profile.id}', '${profile.username}')" 
+                                          style="padding: 5px 10px; font-size: 0.9em;">Add Friend</button>`
+                            }
+                        </div>
+                    `;
+                    
+                    resultsContainer.appendChild(resultItem);
+                });
+            } else {
+                resultsContainer.innerHTML = '<div style="text-align: center; color: #6c757d; padding: 10px;">No users found matching "' + searchTerm + '"</div>';
+            }
+        } catch (error) {
+            console.error('Error searching users:', error);
+        }
+    }, 500); // 500ms debounce
+}
 // Send friend request (simplified - auto-accept for now)
 async function sendFriendRequest(friendId, friendUsername) {
     const { data: { user } } = await supabase.auth.getUser();
@@ -916,35 +1046,41 @@ async function deleteCurrentRound() {
     }
 }
 
-// Helper function to get player profile picture
+// Replace the existing getPlayerProfilePicture function
 async function getPlayerProfilePicture(playerName) {
-    // Check cache first
-    if (profilePictureCache[playerName]) {
-        return profilePictureCache[playerName];
+    // Check cache first with timestamp
+    const cached = profilePictureCache[playerName];
+    if (cached && (Date.now() - cached.timestamp < CACHE_DURATION)) {
+        return cached.data;
     }
     
     try {
-        // Query the database for the player's profile picture
         const { data, error } = await supabase
             .from('profiles')
             .select('profile_picture_base64')
             .eq('username', playerName)
             .single();
 
-        if (error || !data || !data.profile_picture_base64) {
-            // Default image if no profile picture found
-            profilePictureCache[playerName] = "./images/user.png";
-            return "./images/user.png";
-        }
-
-        // Cache and return the base64 image
-        profilePictureCache[playerName] = data.profile_picture_base64;
-        return data.profile_picture_base64;
+        const result = (error || !data?.profile_picture_base64) 
+            ? "./images/user.png" 
+            : data.profile_picture_base64;
+            
+        // Cache with timestamp
+        profilePictureCache[playerName] = {
+            data: result,
+            timestamp: Date.now()
+        };
+        
+        return result;
         
     } catch (error) {
         console.error('Error loading profile picture for', playerName, error);
-        profilePictureCache[playerName] = "./images/user.png";
-        return "./images/user.png";
+        const fallback = "./images/user.png";
+        profilePictureCache[playerName] = {
+            data: fallback,
+            timestamp: Date.now()
+        };
+        return fallback;
     }
 }
 
@@ -1020,10 +1156,11 @@ async function updateScore(player, holeIndex, change) {
 }
 
 // Save current round scores to Supabase
-let saveTimeout;
 async function saveCurrentRoundScores() {
-    if (!currentRound) return;
+    if (!currentRound || pendingScoreUpdates) return;
 
+    pendingScoreUpdates = true;
+    
     // Debounce saves to avoid too many requests
     clearTimeout(saveTimeout);
     saveTimeout = setTimeout(async () => {
@@ -1041,8 +1178,10 @@ async function saveCurrentRoundScores() {
             }
         } catch (error) {
             console.error('Error saving round scores:', error);
+        } finally {
+            pendingScoreUpdates = false;
         }
-    }, 1000); // Save after 1 second of no changes
+    }, 2000); // Increased to 2 seconds to reduce API calls
 }
 
 function updateTotals() {
@@ -1762,6 +1901,8 @@ window.clearSearchResults = clearSearchResults;
 window.sendFriendRequest = sendFriendRequest;
 window.removeFriend = removeFriend;
 window.addFriendToRound = addFriendToRound;
+window.showFriendDetails = showFriendDetails;
+window.loadFriends = loadFriends;
 
 window.startRound = startRound;
 window.updateScore = updateScore;
