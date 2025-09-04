@@ -8,7 +8,7 @@ body {
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     min-height: 100vh;
-    padding: 20px;
+    padding: 10px;
 }
 
 .login-container {
@@ -16,13 +16,13 @@ body {
     justify-content: center;
     align-items: center;
     min-height: 100vh;
-    padding: 20px;
+    padding: 15px;
 }
 
 .login-card {
     background: rgba(255, 255, 255, 0.95);
     border-radius: 20px;
-    padding: 40px;
+    padding: 30px 20px;
     box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
     text-align: center;
     max-width: 400px;
@@ -34,7 +34,8 @@ body {
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     margin-bottom: 10px;
-    font-size: 2.5em;
+    font-size: 2.2em;
+    line-height: 1.2;
 }
 
 .login-content {
@@ -44,17 +45,21 @@ body {
 .login-content h2 {
     color: #495057;
     margin-bottom: 10px;
+    font-size: 1.5em;
 }
 
 .login-content p {
     color: #6c757d;
     margin-bottom: 30px;
+    line-height: 1.5;
 }
 
 .user-info {
     display: flex;
     align-items: center;
     gap: 15px;
+    flex-wrap: wrap;
+    justify-content: center;
 }
 
 .user-avatar {
@@ -62,6 +67,7 @@ body {
     height: 40px;
     border-radius: 50%;
     border: 2px solid #667eea;
+    flex-shrink: 0;
 }
 
 .container {
@@ -69,8 +75,9 @@ body {
     margin: 0 auto;
     background: rgba(255, 255, 255, 0.95);
     border-radius: 20px;
-    padding: 30px;
+    padding: 20px 15px;
     box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+    overflow-x: auto;
 }
 
 .header {
@@ -81,24 +88,37 @@ body {
     -webkit-text-fill-color: transparent;
 }
 
+.header h1 {
+    font-size: 2.2em;
+    line-height: 1.2;
+    word-wrap: break-word;
+}
+
 .nav {
     display: flex;
-    gap: 10px;
+    gap: 5px;
     margin-bottom: 30px;
     background: #f8f9fa;
     border-radius: 15px;
-    padding: 10px;
+    padding: 8px;
+    flex-wrap: wrap;
 }
 
 .nav-btn {
     flex: 1;
-    padding: 15px;
+    min-width: 100px;
+    padding: 12px 8px;
     border: none;
     background: transparent;
     border-radius: 10px;
     cursor: pointer;
     font-weight: 600;
+    font-size: 14px;
     transition: all 0.3s ease;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .nav-btn.active {
@@ -125,10 +145,11 @@ body {
 .card {
     background: white;
     border-radius: 15px;
-    padding: 25px;
+    padding: 20px 15px;
     margin-bottom: 20px;
     box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
     border: 1px solid #e9ecef;
+    overflow-x: auto;
 }
 
 .form-group {
@@ -140,6 +161,7 @@ label {
     margin-bottom: 8px;
     font-weight: 600;
     color: #495057;
+    font-size: 14px;
 }
 
 input, select, textarea {
@@ -150,6 +172,9 @@ input, select, textarea {
     border-radius: 10px;
     font-size: 16px;
     transition: border-color 0.3s ease;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
 }
 
 input:focus, select:focus, textarea:focus {
@@ -166,11 +191,18 @@ input:focus, select:focus, textarea:focus {
     background: linear-gradient(135deg, #667eea, #764ba2);
     color: white;
     border: none;
-    padding: 12px 25px;
+    padding: 12px 20px;
     border-radius: 10px;
     cursor: pointer;
     font-weight: 600;
+    font-size: 14px;
     transition: all 0.3s ease;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    white-space: nowrap;
 }
 
 .btn:hover {
@@ -184,16 +216,16 @@ input:focus, select:focus, textarea:focus {
 
 .scorecard-grid {
     display: grid;
-    gap: 15px;
+    gap: 10px;
     margin-top: 20px;
 }
 
 .hole-row {
     display: grid;
-    grid-template-columns: 60px repeat(auto-fit, minmax(80px, 1fr));
+    grid-template-columns: 50px 1fr;
     gap: 10px;
     align-items: center;
-    padding: 15px;
+    padding: 12px;
     background: #f8f9fa;
     border-radius: 10px;
 }
@@ -204,55 +236,64 @@ input:focus, select:focus, textarea:focus {
     background: linear-gradient(135deg, #667eea, #764ba2);
     color: white;
     border-radius: 8px;
-    padding: 8px;
+    padding: 8px 4px;
+    font-size: 14px;
+    line-height: 1;
 }
 
 .score-input {
-    width: 60px;
+    width: 100%;
+    max-width: 80px;
     padding: 8px;
     text-align: center;
     border-radius: 5px;
     border: 2px solid #dee2e6;
+    font-size: 16px;
 }
 
 .history-item {
     background: white;
     border-radius: 10px;
-    padding: 20px;
+    padding: 15px;
     margin-bottom: 15px;
     border-left: 5px solid #667eea;
     box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
+    word-wrap: break-word;
+    overflow-wrap: break-word;
 }
 
 .stat-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 20px;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 15px;
     margin-top: 20px;
 }
 
 .stat-card {
     background: linear-gradient(135deg, #667eea, #764ba2);
     color: white;
-    padding: 25px;
+    padding: 20px 15px;
     border-radius: 15px;
     text-align: center;
     box-shadow: 0 10px 25px rgba(102, 126, 234, 0.3);
 }
 
 .stat-number {
-    font-size: 2.5em;
+    font-size: 2em;
     font-weight: bold;
-    margin-bottom: 10px;
+    margin-bottom: 8px;
+    line-height: 1;
 }
 
 .improvement-badge {
     background: #28a745;
     color: white;
-    padding: 5px 15px;
+    padding: 4px 12px;
     border-radius: 20px;
-    font-size: 14px;
+    font-size: 12px;
     font-weight: 600;
+    display: inline-block;
+    margin-top: 5px;
 }
 
 .friend-list {
@@ -264,11 +305,12 @@ input:focus, select:focus, textarea:focus {
 .friend-card {
     background: white;
     border-radius: 10px;
-    padding: 20px;
+    padding: 15px;
     text-align: center;
     box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
     border: 2px solid #e9ecef;
     transition: transform 0.3s ease;
+    word-wrap: break-word;
 }
 
 .friend-card:hover {
@@ -279,23 +321,29 @@ input:focus, select:focus, textarea:focus {
 .friend-card h4 {
     margin: 5px 0;
     color: #333;
+    font-size: 16px;
+    line-height: 1.3;
 }
 
 .friend-card .btn {
-    margin: 2px;
-    font-size: 0.9em;
+    margin: 3px 2px;
+    font-size: 0.8em;
+    padding: 8px 12px;
+    flex-shrink: 0;
 }
 
 .search-result-item {
-    padding: 10px;
+    padding: 12px;
     border: 1px solid #ddd;
-    margin: 5px 0;
-    border-radius: 5px;
+    margin: 8px 0;
+    border-radius: 8px;
     display: flex;
     justify-content: space-between;
     align-items: center;
     background: #f8f9fa;
     transition: background-color 0.2s ease;
+    flex-wrap: wrap;
+    gap: 10px;
 }
 
 .search-result-item:hover {
@@ -303,8 +351,9 @@ input:focus, select:focus, textarea:focus {
 }
 
 .search-result-item .btn {
-    padding: 5px 10px;
-    font-size: 0.9em;
+    padding: 8px 12px;
+    font-size: 0.85em;
+    flex-shrink: 0;
 }
 
 #user-search-results {
@@ -312,51 +361,42 @@ input:focus, select:focus, textarea:focus {
     overflow-y: auto;
 }
 
-.friend-list {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-    gap: 15px;
-    margin-top: 15px;
-}
-
-@media (max-width: 768px) {
-    .friend-list {
-        grid-template-columns: 1fr;
-    }
-}
-
 .progress-section {
     background: linear-gradient(135deg, #f8f9fa, #e9ecef);
     border-radius: 15px;
-    padding: 25px;
+    padding: 20px 15px;
     margin-top: 20px;
 }
 
 .chart-placeholder {
-    height: 300px;
+    height: 250px;
     background: white;
     border-radius: 10px;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 18px;
+    font-size: 16px;
     color: #6c757d;
     border: 2px dashed #dee2e6;
+    text-align: center;
+    padding: 20px;
 }
+
 .score-control {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
+    justify-content: center;
 }
 
 .score-decrease, .score-increase {
     background: linear-gradient(135deg, #667eea, #764ba2);
     color: white;
     border: none;
-    width: 40px;
-    height: 40px;
-    border-radius: 10px;
-    font-size: 20px;
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    font-size: 18px;
     font-weight: 600;
     cursor: pointer;
     transition: all 0.3s ease;
@@ -364,6 +404,7 @@ input:focus, select:focus, textarea:focus {
     align-items: center;
     justify-content: center;
     box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
+    flex-shrink: 0;
 }
 
 .score-decrease:hover, .score-increase:hover {
@@ -378,13 +419,292 @@ input:focus, select:focus, textarea:focus {
 }
 
 .score-display {
-    font-size: 18px;
+    font-size: 16px;
     font-weight: 600;
     color: #495057;
     background: #f8f9fa;
-    padding: 8px 15px;
+    padding: 8px 12px;
     border-radius: 8px;
     border: 2px solid #e9ecef;
-    min-width: 50px;
+    min-width: 45px;
     text-align: center;
+    flex-shrink: 0;
+}
+
+/* Mobile-specific improvements */
+@media (max-width: 768px) {
+    body {
+        padding: 5px;
+    }
+    
+    .container {
+        padding: 15px 10px;
+        border-radius: 15px;
+        margin: 0 5px;
+    }
+    
+    .login-card {
+        padding: 25px 15px;
+        margin: 0 5px;
+    }
+    
+    .login-header h1 {
+        font-size: 1.8em;
+    }
+    
+    .login-content h2 {
+        font-size: 1.3em;
+    }
+    
+    .header h1 {
+        font-size: 1.8em;
+    }
+    
+    .nav {
+        flex-direction: column;
+        gap: 8px;
+        padding: 8px;
+    }
+    
+    .nav-btn {
+        min-width: auto;
+        padding: 12px 15px;
+        font-size: 14px;
+        white-space: normal;
+        text-overflow: initial;
+        overflow: visible;
+    }
+    
+    .card {
+        padding: 15px 10px;
+        margin-bottom: 15px;
+    }
+    
+    .hole-row {
+        grid-template-columns: 45px 1fr;
+        gap: 8px;
+        padding: 10px;
+    }
+    
+    .hole-number {
+        padding: 6px 4px;
+        font-size: 12px;
+    }
+    
+    .score-input {
+        max-width: 60px;
+        padding: 6px;
+        font-size: 14px;
+    }
+    
+    .stat-grid {
+        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+        gap: 10px;
+    }
+    
+    .stat-card {
+        padding: 15px 10px;
+    }
+    
+    .stat-number {
+        font-size: 1.5em;
+    }
+    
+    .friend-list {
+        grid-template-columns: 1fr;
+        gap: 10px;
+    }
+    
+    .friend-card {
+        padding: 12px;
+    }
+    
+    .friend-card .btn {
+        font-size: 0.75em;
+        padding: 6px 10px;
+        margin: 2px 1px;
+    }
+    
+    .search-result-item {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+        padding: 10px;
+    }
+    
+    .search-result-item .btn {
+        align-self: center;
+        padding: 6px 15px;
+        font-size: 0.8em;
+    }
+    
+    .chart-placeholder {
+        height: 200px;
+        font-size: 14px;
+        padding: 15px;
+    }
+    
+    .progress-section {
+        padding: 15px 10px;
+    }
+    
+    .score-control {
+        gap: 6px;
+    }
+    
+    .score-decrease, .score-increase {
+        width: 32px;
+        height: 32px;
+        font-size: 16px;
+    }
+    
+    .score-display {
+        font-size: 14px;
+        padding: 6px 10px;
+        min-width: 40px;
+    }
+    
+    .user-info {
+        flex-direction: column;
+        gap: 10px;
+        text-align: center;
+    }
+    
+    .improvement-badge {
+        font-size: 11px;
+        padding: 3px 10px;
+    }
+}
+
+/* Extra small screens */
+@media (max-width: 480px) {
+    .container {
+        padding: 12px 8px;
+        margin: 0;
+        border-radius: 10px;
+    }
+    
+    .login-card {
+        padding: 20px 12px;
+        margin: 0;
+        border-radius: 15px;
+    }
+    
+    .nav {
+        padding: 6px;
+    }
+    
+    .nav-btn {
+        padding: 10px 8px;
+        font-size: 13px;
+    }
+    
+    .card {
+        padding: 12px 8px;
+    }
+    
+    .hole-row {
+        grid-template-columns: 40px 1fr;
+        gap: 6px;
+        padding: 8px;
+    }
+    
+    .hole-number {
+        padding: 4px 2px;
+        font-size: 11px;
+    }
+    
+    .score-input {
+        max-width: 50px;
+        padding: 4px;
+        font-size: 14px;
+    }
+    
+    .stat-grid {
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+    }
+    
+    .stat-card {
+        padding: 12px 8px;
+    }
+    
+    .stat-number {
+        font-size: 1.3em;
+    }
+    
+    .friend-card {
+        padding: 10px;
+    }
+    
+    .friend-card h4 {
+        font-size: 14px;
+    }
+    
+    .friend-card .btn {
+        font-size: 0.7em;
+        padding: 5px 8px;
+    }
+    
+    .chart-placeholder {
+        height: 180px;
+        font-size: 13px;
+        padding: 10px;
+    }
+    
+    .score-decrease, .score-increase {
+        width: 28px;
+        height: 28px;
+        font-size: 14px;
+    }
+    
+    .score-display {
+        font-size: 13px;
+        padding: 5px 8px;
+        min-width: 35px;
+    }
+}
+
+/* Landscape orientation adjustments for mobile */
+@media (max-width: 768px) and (orientation: landscape) {
+    .nav {
+        flex-direction: row;
+        flex-wrap: wrap;
+    }
+    
+    .nav-btn {
+        flex: 1;
+        min-width: 80px;
+    }
+    
+    .stat-grid {
+        grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+    }
+}
+
+/* Ensure text doesn't break badly */
+* {
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+}
+
+/* Prevent horizontal overflow */
+html, body {
+    overflow-x: hidden;
+}
+
+/* Touch-friendly targets */
+@media (pointer: coarse) {
+    .btn, .nav-btn, .score-decrease, .score-increase {
+        min-height: 44px;
+        min-width: 44px;
+    }
+    
+    .score-input {
+        min-height: 44px;
+    }
+    
+    input, select, textarea {
+        min-height: 44px;
+    }
 }
