@@ -6,14 +6,12 @@
     <title>Disc Golf Tracker</title>
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="mobile_style.css">
-
-    <script type="module" src="script.js"></script>
-    
-    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script type="module" src="script.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 </head>
 <body>
-    <div id="login-screen" class="login-container" style="display: true;">
+    <div id="login-screen" class="bg-gradient-to-r from-indigo-600 to-purple-600 login-container" style="display: true;">
         <div class="login-card">
             <div class="login-header">
                 <h1>🥏 Disc Golf Tracker</h1>
@@ -34,146 +32,206 @@
             </div>
         </div>
     </div>
+
     <!-- Main App (hidden until logged in) -->
-    <div id="main-app" style="display: none;">
-        <header class="header">
-            <div class="header-content">
-                <div class="user-info-header">
-                    <img id="user-avatar" src="./images/user.png" alt="User" class="user-avatar" onclick="showSection('profile')" title="View Profile">
-                </div>
-                <div class="header-text">
-                    <h1>🥏 Disc Golf Tracker</h1>
+    <div id="main-app" class="min-h-screen bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 p-2 md:p-4" style="display: none;">
+        <!-- Header -->
+        <header class="rounded-xl bg-white shadow-lg text-white p-6">
+            <div class="flex flex-col md:flex-row items-center justify-between gap-4">
+                <div class="text-center md:text-right">
+                    <h1 class="text-2xl md:text-3xl font-bold flex items-center gap-2 justify-center md:justify-end gradient-text">
+                        <span>🥏 Disc Golf Tracker</span>
+                    </h1>
+                    <p class="text-indigo-200 text-sm">Track your rounds, improve your game,<br>connect with friends</p>
                 </div>
             </div>
         </header>
-        
-        <div class="continer">
-        <nav class="nav">
-            <button class="nav-btn active" data-label="New Round" onclick="showSection('new-round')">🥏</button>
-            <button class="nav-btn" data-label="History" onclick="showSection('history')">📝</button>
-            <button class="nav-btn" data-label="Progress" onclick="showSection('progress')">📈</button>
-            <button class="nav-btn" data-label="Friends" onclick="showSection('friends')">👥</button>
-        </nav>
 
-        <!-- New Round Section -->
-        <div id="new-round" class="section active">
-            <div class="card">
-                <h2>Start New Round</h2>
-                <div class="form-group">
-                    <label for="course">Course</label>
-                    <select id="course">
-                        <option value="">Select a course</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label for="players">Players (comma-separated)</label>
-                    <input type="text" id="players" placeholder="Enter player names..." value="You">
-                </div>
-                <button class="btn" onclick="startRound()">Start Round</button>
-            </div>
-
-            <div id="scorecard" style="display: none;">
-                <div class="card">
-                    <h3>Scorecard - <span id="current-course"></span></h3>
-                    <div id="scorecard-content"></div>
-                    <button class="btn" onclick="finishRound()" style="margin-top: 20px;">Finish Round</button>
-                </div>
-            </div>
-        </div>
-
-        <!-- History Section -->
-        <div id="history" class="section">
-            <div class="card">
-                <h2>Round History</h2>
-                <div id="history-list"></div>
-            </div>
-        </div>
-
-        <!-- Progress Section -->
-        <div id="progress" class="section">
-            <div class="card">
-                <h2>Your Progress</h2>
-                <div class="stat-grid">
-                    <div class="stat-card">
-                        <div class="stat-number" id="total-rounds">0</div>
-                        <div>Total Rounds</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-number" id="avg-score">-</div>
-                        <div>Average Score</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-number" id="best-score">-</div>
-                        <div>Best Score</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-number" id="improvement">-</div>
-                        <div>Last 5 Average</div>
+        <div class="pt-6">
+            <!-- New Round Section -->
+            <div id="new-round" class="section space-y-6">
+                <div class="bg-white rounded-xl shadow-lg border border-gray-200 p-6">
+                    <h2 class="text-2xl font-bold text-gray-800 mb-6 flex items-center gap-2">
+                        <span>🥏</span>
+                        Start New Round
+                    </h2>
+                    <div class="space-y-4">
+                        <div>
+                            <label for="course" class="block text-sm font-semibold text-gray-700 mb-2">Course</label>
+                            <select id="course" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white">
+                                <option value="">Select a course</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="players" class="block text-sm font-semibold text-gray-700 mb-2">Players (comma-separated)</label>
+                            <input type="text" id="players" placeholder="Enter player names..." value="You" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                        </div>
+                        <button onclick="startRound()" class="w-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white py-3 px-6 rounded-lg font-semibold hover:shadow-lg transform hover:-translate-y-0.5 transition-all duration-200">
+                            Start Round
+                        </button>
                     </div>
                 </div>
-                
-                <div class="progress-section">
-                    <h3>Score Trends</h3>
-                    <div class="chart-placeholder" id="score-chart">
-                        📈 Score progression chart will appear here
-                    </div>
+
+                <div id="scorecard" class="bg-white rounded-xl shadow-lg border border-gray-200 p-6" style="display: none;">
+                    <h3 class="text-xl font-bold text-gray-800 mb-4">
+                        Scorecard - <span id="current-course" class="text-indigo-600"></span>
+                    </h3>
+                    <div id="scorecard-content" class="overflow-x-auto"></div>
+                    <button onclick="finishRound()" class="w-full mt-6 bg-green-600 text-white py-3 px-6 rounded-lg font-semibold hover:bg-green-700 transition-colors duration-200">
+                        Finish Round
+                    </button>
                 </div>
             </div>
-        </div>
 
-        <!-- Friends Section -->
-        <div id="friends" class="section">
-            <div class="card">
-                <h2>Friends & Connections</h2>
-                
-                <!-- Add Friend Section -->
-                <div class="form-group">
-                    <label for="friend-username">Search & Add Friends</label>
-                    <div style="display: flex; gap: 10px; margin-bottom: 10px;">
-                        <input type="text" id="friend-username" placeholder="Search by username..." 
-                            onkeyup="if(event.key==='Enter') searchUsers()" 
-                            oninput="if(this.value.length >= 2) searchUsers(); else clearSearchResults()">
-                        <button class="btn" onclick="searchUsers()">Search</button>
+            <!-- History Section -->
+            <div id="history" class="section hidden">
+                <div class="bg-white rounded-xl shadow-lg border border-gray-200 p-6">
+                    <h2 class="text-2xl font-bold text-gray-800 mb-6 flex items-center gap-2">
+                        <span>📝</span>
+                        Round History
+                    </h2>
+                    <div id="history-list" class="space-y-4"></div>
+                </div>
+            </div>
+
+            <!-- Progress Section -->
+            <div id="progress" class="section hidden">
+                <div class="bg-white rounded-xl shadow-lg border border-gray-200 p-6">
+                    <h2 class="text-2xl font-bold text-gray-800 mb-6 flex items-center gap-2">
+                        <span>📈</span>
+                        Your Progress
+                    </h2>
+                    
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+                        <div class="bg-gradient-to-br from-indigo-500 to-purple-600 text-white p-6 rounded-xl text-center shadow-lg">
+                            <div id="total-rounds" class="text-3xl font-bold mb-2 text-sm">0</div>
+                            <div class="text-indigo-100 text-sm">Total Rounds</div>
+                        </div>
+                        <div class="bg-gradient-to-br from-green-500 to-teal-600 text-white p-6 rounded-xl text-center shadow-lg">
+                            <div id="avg-score" class="text-3xl font-bold mb-2 text-sm">-</div>
+                            <div class="text-green-100 text-sm">Average Score</div>
+                        </div>
+                        <div class="bg-gradient-to-br from-orange-500 to-red-600 text-white p-6 rounded-xl text-center shadow-lg">
+                            <div id="best-score" class="text-3xl font-bold mb-2 text-sm">-</div>
+                            <div class="text-orange-100 text-sm">Best Score</div>
+                        </div>
+                        <div class="bg-gradient-to-br from-purple-500 to-pink-600 text-white p-6 rounded-xl text-center shadow-lg">
+                            <div id="improvement" class="text-3xl font-bold mb-2 text-sm">-</div>
+                            <div class="text-purple-100 text-sm">Last 5 Average</div>
+                        </div>
                     </div>
                     
-                    <!-- Search Results Container -->
-                    <div id="user-search-results" style="margin-bottom: 20px;"></div>
-                </div>
-
-                <!-- Friends List -->
-                <div style="margin-top: 30px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                        <h3 style="margin: 0;">Your Friends</h3>
-                        <button class="btn" onclick="loadFriends()" style="padding: 5px 10px; font-size: 0.9em;">Refresh</button>
-                    </div>
-                    <div class="friend-list" id="friends-list">
-                        <div style="text-align: center; color: #6c757d;">Loading friends...</div>
+                    <div class="bg-gray-50 rounded-xl p-6">
+                        <h3 class="text-lg font-semibold text-gray-800 mb-4">Score Trends</h3>
+                        <div id="score-chart" class="h-64 bg-white rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center text-gray-500">
+                            <div class="text-center">
+                                <div class="text-4xl mb-2">📈</div>
+                                <div>Score progression chart will appear here</div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
+
+            <!-- Friends Section -->
+            <div id="friends" class="section hidden">
+                <div class="bg-white rounded-xl shadow-lg border border-gray-200 p-6">
+                    <h2 class="text-2xl font-bold text-gray-800 mb-6 flex items-center gap-2">
+                        <span>👥</span>
+                        Friends & Connections
+                    </h2>
+                    
+                    <!-- Add Friend Section -->
+                    <div class="mb-8 p-4 bg-gray-50 rounded-lg">
+                        <label for="friend-username" class="block text-sm font-semibold text-gray-700 mb-2">Search & Add Friends</label>
+                        <div class="flex gap-3 mb-3">
+                            <input type="text" id="friend-username" placeholder="Search by username..." 
+                                onkeyup="if(event.key==='Enter') searchUsers()" 
+                                oninput="if(this.value.length >= 2) searchUsers(); else clearSearchResults()"
+                                class="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                            <button onclick="searchUsers()" class="bg-indigo-600 text-white px-6 py-2 rounded-lg font-medium hover:bg-indigo-700 transition-colors duration-200">
+                                Search
+                            </button>
+                        </div>
+                        
+                        <!-- Search Results Container -->
+                        <div id="user-search-results" class="space-y-2"></div>
+                    </div>
+
+                    <!-- Friends List -->
+                    <div>
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 class="text-lg font-semibold text-gray-800">Your Friends</h3>
+                            <button onclick="loadFriends()" class="bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-300 transition-colors duration-200">
+                                Refresh
+                            </button>
+                        </div>
+                        <div id="friends-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            <div class="text-center text-gray-500 col-span-full">Loading friends...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Profile Section -->
+            <div id="profile" class="section hidden">
+                <div class="bg-white rounded-xl shadow-lg border border-gray-200 p-6">
+                    <h2 class="text-2xl font-bold text-gray-800 mb-6 flex items-center gap-2">
+                        <span>👤</span>
+                        Your Profile
+                    </h2>
+                    <div class="space-y-4">
+                        <div>
+                            <label for="profile-username" class="block text-sm font-semibold text-gray-700 mb-2">Username</label>
+                            <input type="text" id="profile-username" placeholder="Enter username" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                        </div>
+                        <div>
+                            <label for="profile-email" class="block text-sm font-semibold text-gray-700 mb-2">Email</label>
+                            <input type="email" id="profile-email" readonly class="w-full px-4 py-3 border border-gray-300 rounded-lg bg-gray-50 cursor-not-allowed">
+                        </div>
+                        <div>
+                            <label for="profile-bio" class="block text-sm font-semibold text-gray-700 mb-2">Bio</label>
+                            <textarea id="profile-bio" rows="4" placeholder="Tell us about your disc golf journey..." class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 resize-none"></textarea>
+                        </div>
+                        <div class="flex flex-col sm:flex-row gap-3">
+                            <button onclick="saveProfile()" class="flex-1 bg-gradient-to-r from-indigo-600 to-purple-600 text-white py-3 px-6 rounded-lg font-semibold hover:shadow-lg transform hover:-translate-y-0.5 transition-all duration-200">
+                                Save Profile
+                            </button>
+                            <button onclick="signOut()" class="flex-1 bg-red-600 text-white py-3 px-6 rounded-lg font-semibold hover:bg-red-700 transition-colors duration-200">
+                                Logout
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
 
-        <!-- Profile Section -->
-        <div id="profile" class="section">
-        <div class="card">
-            <h2>Your Profile</h2>
-            <div class="form-group">
-            <label for="profile-username">Username</label>
-            <input type="text" id="profile-username" placeholder="Enter username">
+        
+        <!-- Fixed Bottom Navigation -->
+        <nav class="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-gray-200 px-2 py-2 z-50 shadow-lg">
+            <div class="flex justify-around items-center max-w-6xl mx-auto">
+                <button class="nav-btn flex flex-col items-center gap-1 px-3 py-2 rounded-lg font-medium transition-all duration-200 bg-indigo-600 text-white" onclick="showSection('new-round')">
+                    <span class="text-xl">🥏</span>
+                    <span class="text-xs">Round</span>
+                </button>
+                <button class="nav-btn flex flex-col items-center gap-1 px-3 py-2 rounded-lg font-medium transition-all duration-200 text-gray-600 hover:text-indigo-600 hover:bg-indigo-50" onclick="showSection('history')">
+                    <span class="text-xl">📝</span>
+                    <span class="text-xs">History</span>
+                </button>
+                <button class="nav-btn flex flex-col items-center gap-1 px-3 py-2 rounded-lg font-medium transition-all duration-200 text-gray-600 hover:text-indigo-600 hover:bg-indigo-50" onclick="showSection('progress')">
+                    <span class="text-xl">📈</span>
+                    <span class="text-xs">Progress</span>
+                </button>
+                <button class="nav-btn flex flex-col items-center gap-1 px-3 py-2 rounded-lg font-medium transition-all duration-200 text-gray-600 hover:text-indigo-600 hover:bg-indigo-50" onclick="showSection('friends')">
+                    <span class="text-xl">👥</span>
+                    <span class="text-xs">Friends</span>
+                </button>
+                <button class="nav-btn flex flex-col items-center gap-1 px-3 py-2 rounded-lg font-medium transition-all duration-200 text-gray-600 hover:text-indigo-600 hover:bg-indigo-50" onclick="showSection('profile')">
+                    <img id="user-avatar" src="./images/user.png" alt="User" class="w-7 h-7 rounded-full border-2 border-black/50">
+                    <span class="text-xs">Profile</span>
+                </button>
             </div>
-            <div class="form-group">
-            <label for="profile-email">Email</label>
-            <input type="email" id="profile-email" readonly>
-            </div>
-            <div class="form-group">
-            <label for="profile-bio">Bio</label>
-            <textarea id="profile-bio" rows="4" placeholder="Tell us about your disc golf journey..."></textarea>
-            </div>
-            <button class="btn" onclick="saveProfile()">Save Profile</button>
-            <button class="btn logout-btn" onclick="signOut()">Logout</button>
-        </div>
-        </div>
-        </div>
+        </nav>
     </div>
 </body>
 </html>

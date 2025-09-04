@@ -603,7 +603,6 @@ function clearSearchResults() {
     }
 }
 
-// Navigation
 function showSection(sectionId) {
     document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
     document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
@@ -615,7 +614,6 @@ function showSection(sectionId) {
     if (sectionId === 'progress') updateProgress();
     if (sectionId === 'friends') loadFriends();
 }
-
 async function startRound() {
     const courseId = document.getElementById('course').value;
     const playersText = document.getElementById('players').value;
@@ -727,54 +725,51 @@ async function startRound() {
 function createScorecard(course, players) {
     const container = document.getElementById('scorecard-content');
     container.innerHTML = '';
+    container.className = 'space-y-2';
     
     // Header row
     const headerRow = document.createElement('div');
-    headerRow.className = 'hole-row';
-    headerRow.style.background = '#667eea';
-    headerRow.style.color = 'white';
-    headerRow.style.fontWeight = 'bold';
-    headerRow.innerHTML = '<div>Hole</div>' + players.map(player => `<div>${player}</div>`).join('') + '<div>Par</div>';
+    headerRow.className = 'grid gap-2 p-3 bg-indigo-600 text-white font-bold rounded-lg text-center text-sm';
+    headerRow.style.gridTemplateColumns = `80px repeat(${players.length}, 1fr) 60px`;
+    headerRow.innerHTML = '<div>Hole</div>' + players.map(player => `<div class="truncate">${player}</div>`).join('') + '<div>Par</div>';
     container.appendChild(headerRow);
 
     // Hole rows
     for (let hole = 1; hole <= course.holes.length; hole++) {
-        const par = course.holes[hole - 1]; // Get par for the current hole
+        const par = course.holes[hole - 1];
         const distance = course.distances[hole - 1];
         const row = document.createElement('div');
-        row.className = 'hole-row';
+        row.className = 'grid gap-2 p-3 bg-gray-50 hover:bg-gray-100 rounded-lg items-center text-center text-sm';
+        row.style.gridTemplateColumns = `80px repeat(${players.length}, 1fr) 60px`;
         
-        let rowHTML = `<div class="hole-number">${hole} (${distance}m)</div>`;
+        let rowHTML = `<div class="font-semibold text-indigo-600">${hole}<br><span class="text-xs text-gray-500">${distance}m</span></div>`;
         
         players.forEach(player => {
-            // Get current score from currentRound instead of gameData
             const currentScore = currentRound && currentRound.scores[player] ? 
                 currentRound.scores[player][hole - 1] : 0;
             const displayScore = currentScore > 0 ? currentScore : '';
             
             rowHTML += `
-                <div class="score-control" style="display: flex; align-items: center; justify-content: center; gap: 5px;">
-                    <button class="score-decrease" onclick="updateScore('${player}', ${hole-1}, -1)" 
-                            style="width: 25px; height: 25px; border: none; background: #dc3545; color: white; border-radius: 3px; cursor: pointer;">-</button>
-                    <span class="score-display" id="score-${player}-${hole-1}" 
-                          style="min-width: 30px; text-align: center; font-weight: bold; font-size: 16px;">${displayScore}</span>
-                    <button class="score-increase" onclick="updateScore('${player}', ${hole-1}, 1)" 
-                            style="width: 25px; height: 25px; border: none; background: #28a745; color: white; border-radius: 3px; cursor: pointer;">+</button>
+                <div class="flex items-center justify-center gap-1">
+                    <button onclick="updateScore('${player}', ${hole-1}, -1)" 
+                            class="w-7 h-7 bg-red-500 hover:bg-red-600 text-white rounded text-xs font-bold transition-colors duration-200">-</button>
+                    <span id="score-${player}-${hole-1}" 
+                          class="w-8 h-8 flex items-center justify-center font-bold text-gray-800 bg-white border border-gray-300 rounded text-sm">${displayScore}</span>
+                    <button onclick="updateScore('${player}', ${hole-1}, 1)" 
+                            class="w-7 h-7 bg-green-500 hover:bg-green-600 text-white rounded text-xs font-bold transition-colors duration-200">+</button>
                 </div>
             `;
         });
         
-        rowHTML += `<div style="text-align: center; font-weight: bold; color: #666;">${par}</div>`;
+        rowHTML += `<div class="font-bold text-gray-600">${par}</div>`;
         row.innerHTML = rowHTML;
         container.appendChild(row);
     }
     
     // Total row
     const totalRow = document.createElement('div');
-    totalRow.className = 'hole-row';
-    totalRow.style.background = '#28a745';
-    totalRow.style.color = 'white';
-    totalRow.style.fontWeight = 'bold';
+    totalRow.className = 'grid gap-2 p-3 bg-green-600 text-white font-bold rounded-lg text-center';
+    totalRow.style.gridTemplateColumns = `80px repeat(${players.length}, 1fr) 60px`;
     
     let totalHTML = '<div>Total</div>';
     players.forEach(player => {
@@ -785,7 +780,6 @@ function createScorecard(course, players) {
     totalRow.innerHTML = totalHTML;
     container.appendChild(totalRow);
 
-    // Update totals initially
     updateTotals();
 }
 
@@ -1385,6 +1379,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     await loadProfile();
     await loadCourses();
     await loadCurrentRound();
+    await showSection('new-round')
   } else {
     console.log("User is not logged in");
   }
