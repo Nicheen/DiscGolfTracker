@@ -185,7 +185,7 @@ async function loadCourses() {
         coursesData.forEach(course => {
             const totalPar = course.holes.reduce((a, b) => a + b, 0);
             const avgDistance = Math.round(course.distances.reduce((a, b) => a + b, 0) / course.distances.length);
-            const difficulty = getDifficultyLevel(course.name, totalPar, course.holes.length);
+            const difficulty = getDifficultyLevel(course.name, totalPar, course.holes.length, avgDistance);
             
             const courseCard = document.createElement('div');
             courseCard.className = 'course-card p-4 border-2 border-gray-200 rounded-xl cursor-pointer transition-all duration-200 hover:border-indigo-400 hover:shadow-lg hover:-translate-y-1';
@@ -528,28 +528,94 @@ async function loadRoundScorecard(roundId, itemId) {
 }
 
 // Helper function to determine difficulty
-function getDifficultyLevel(name, par, holes) {
+function getDifficultyLevel(name, par, holes, avgDistance) {
     const avgPar = par / holes;
     const namePattern = name.toLowerCase();
     
-    if (namePattern.includes('easy') || avgPar < 3.2) {
-        return { class: 'bg-green-100 text-green-700', text: 'Easy' };
-    } else if (namePattern.includes('hard') || namePattern.includes('championship') || avgPar > 3.6) {
-        return { class: 'bg-red-100 text-red-700', text: 'Hard' };
+    let difficultyScore = 0;
+    
+    // Distance-based scoring (primary factor) - independent of hole count
+    if (avgDistance < 75) {
+        difficultyScore += 1; // Easy
+    } else if (avgDistance >= 75 && avgDistance <= 100) {
+        difficultyScore += 2; // Medium
+    } else if (avgDistance > 100) {
+        difficultyScore += 3; // Hard
+    }
+    
+    // Par-based scoring (secondary factor) - normalized per hole
+    if (avgPar < 3.2) {
+        difficultyScore += 0.5; // Easier
+    } else if (avgPar > 3.6) {
+        difficultyScore += 1; // Harder
+    }
+    
+    // Name-based overrides (can bump up or down)
+    if (namePattern.includes('lätt') || namePattern.includes('easy') || namePattern.includes('nybörjare')) {
+        difficultyScore -= 0.5;
+    } else if (namePattern.includes('svår') || namePattern.includes('hard') || namePattern.includes('championship') || 
+               namePattern.includes('pro') || namePattern.includes('mäster')) {
+        difficultyScore += 1;
+    } else if (namePattern.includes('medel') || namePattern.includes('medium')) {
+        difficultyScore = 2; // Force medium if explicitly stated
+    }
+    
+    // Adjust thresholds to be more lenient for courses just over 100m average
+    if (difficultyScore <= 1.5) {
+        return { class: 'bg-green-100 text-green-700', text: 'Easy', emoji: '🟢' };
+    } else if (difficultyScore >= 4) { // Raised threshold from 3.5 to 4
+        return { class: 'bg-red-100 text-red-700', text: 'Hard', emoji: '🔴' };
     } else {
-        return { class: 'bg-blue-100 text-blue-700', text: 'Medium' };
+        return { class: 'bg-yellow-100 text-yellow-700', text: 'Medium', emoji: '🟡' };
     }
 }
 
-// Helper function to get course emoji
+// Helper function to get course emoji - Enhanced for Swedish courses
 function getCourseEmoji(name) {
     const namePattern = name.toLowerCase();
-    if (namePattern.includes('forest') || namePattern.includes('wood')) return '🌲';
-    if (namePattern.includes('park')) return '🏞️';
-    if (namePattern.includes('lake') || namePattern.includes('water')) return '🏞️';
-    if (namePattern.includes('mountain') || namePattern.includes('hill')) return '⛰️';
-    if (namePattern.includes('easy')) return '🟢';
-    if (namePattern.includes('hard') || namePattern.includes('championship')) return '🔴';
+    
+    // Specific Uppsala area courses
+    if (namePattern.includes('domarringen')) return '👑'; // "Domare" = Judge, royal theme
+    if (namePattern.includes('rosendal')) return '🌹'; // Rose valley
+    if (namePattern.includes('röbo')) return '🌊'; // Water/stream theme
+    if (namePattern.includes('ultuna')) return '🎓'; // University/academic area
+    if (namePattern.includes('gamla uppsala')) return '⚔️'; // Ancient Uppsala, Viking theme
+    if (namePattern.includes('uppsala')) return '🏛️'; // Historic university city
+    
+    // Swedish nature themes
+    if (namePattern.includes('skog') || namePattern.includes('forest')) return '🌲';
+    if (namePattern.includes('sjö') || namePattern.includes('lake')) return '🏞️';
+    if (namePattern.includes('berg') || namePattern.includes('mountain') || namePattern.includes('hill')) return '⛰️';
+    if (namePattern.includes('strand') || namePattern.includes('beach')) return '🏖️';
+    if (namePattern.includes('dal') || namePattern.includes('valley')) return '🌄';
+    if (namePattern.includes('åker') || namePattern.includes('field')) return '🌾';
+    if (namePattern.includes('myr') || namePattern.includes('bog')) return '🌿';
+    
+    // Swedish place name endings and themes
+    if (namePattern.includes('holm') || namePattern.includes('ö')) return '🏝️'; // Island
+    if (namePattern.includes('by') || namePattern.includes('stad')) return '🏘️'; // Town/city
+    if (namePattern.includes('torp') || namePattern.includes('gård')) return '🏡'; // Farm/homestead
+    if (namePattern.includes('kyrka') || namePattern.includes('church')) return '⛪';
+    if (namePattern.includes('slott') || namePattern.includes('castle')) return '🏰';
+    
+    // Difficulty indicators
+    if (namePattern.includes('lätt') || namePattern.includes('easy') || namePattern.includes('nybörjare')) return '🟢';
+    if (namePattern.includes('svår') || namePattern.includes('hard') || namePattern.includes('championship') || namePattern.includes('pro')) return '🔴';
+    if (namePattern.includes('medel') || namePattern.includes('medium')) return '🟡';
+    
+    // Weather and seasonal themes
+    if (namePattern.includes('vinter') || namePattern.includes('winter')) return '❄️';
+    if (namePattern.includes('sommar') || namePattern.includes('summer')) return '☀️';
+    if (namePattern.includes('höst') || namePattern.includes('autumn')) return '🍂';
+    if (namePattern.includes('vår') || namePattern.includes('spring')) return '🌸';
+    
+    // Fun Swedish cultural references
+    if (namePattern.includes('viking') || namePattern.includes('tor')) return '⚡';
+    if (namePattern.includes('midsommar')) return '🌻';
+    if (namePattern.includes('lucia')) return '👑';
+    if (namePattern.includes('krona') || namePattern.includes('crown')) return '👑';
+    
+    // Default disc golf emoji
     return '🥏';
 }
 
@@ -2286,10 +2352,6 @@ function createRoundItem(round, itemId, currentUsername, userId) {
                     </div>
                 </div>
                 
-                <div class="mb-4">
-                    <p class="text-sm text-gray-600 mb-2">Players: ${round.players.join(', ')}</p>
-                </div>
-                
                 ${topPlayers.length > 0 ? `
                     <div class="border-t pt-4">
                         <p class="text-sm font-medium text-gray-700 mb-2">Leaderboard (course par ${par}):</p>
@@ -2847,12 +2909,6 @@ async function viewRoundDetails(roundId) {
         // Create mobile-friendly HTML
         let detailsHTML = `
             <div class="text-left max-h-[70vh] overflow-y-auto">
-                <div class="mb-4 pb-3 border-b border-gray-200">
-                    <h3 class="text-lg font-bold text-gray-900 mb-1">${round.course_name}</h3>
-                    <p class="text-sm text-gray-600"><strong>Date:</strong> ${round.date} (${diffHours}h ${diffMinutes % 60}m ${diffSeconds % 60}s)</p>
-                    <p class="text-sm text-gray-600"><strong>Players:</strong> ${displayPlayers.join(', ')}</p>
-                </div>
-                
                 <h4 class="font-semibold text-gray-800 mb-3 text-sm">Hole-by-hole scores:</h4>
         `;
 
@@ -3317,6 +3373,310 @@ async function saveProfile() {
     }
 }
 
+function togglePasswordVisibility() {
+    const passwordInput = document.getElementById('login-password');
+    const toggleIcon = document.getElementById('password-toggle-icon');
+    
+    if (passwordInput.type === 'password') {
+        passwordInput.type = 'text';
+        // Hidden eye icon (eye with slash)
+        toggleIcon.innerHTML = `
+            <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+            <line x1="1" y1="1" x2="23" y2="23"></line>
+        `;
+    } else {
+        passwordInput.type = 'password';
+        // Visible eye icon
+        toggleIcon.innerHTML = `
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+            <circle cx="12" cy="12" r="3"></circle>
+        `;
+    }
+}
+
+// Auth mode switching
+function switchAuthMode(mode) {
+    const authTabs = document.querySelectorAll('.auth-tab');
+    const submitBtn = document.getElementById('auth-submit-btn');
+    const btnText = document.getElementById('auth-btn-text');
+    const switchText = document.getElementById('auth-switch-text');
+    const forgotLink = document.getElementById('forgot-password-link');
+    const form = document.getElementById('auth-form');
+    
+    // Update tab appearance
+    authTabs.forEach(tab => {
+        tab.classList.remove('active');
+        if (tab.dataset.mode === mode) {
+            tab.classList.add('active');
+        }
+    });
+    
+    if (mode === 'signin') {
+        submitBtn.onclick = signIn;
+        btnText.textContent = 'Sign In';
+        switchText.innerHTML = 'Don\'t have an account? <button type="button" class="link-btn" onclick="switchAuthMode(\'signup\')">Sign up here</button>';
+        forgotLink.style.display = 'block';
+        form.classList.remove('auth-mode-signup');
+    } else {
+        submitBtn.onclick = signUp;
+        btnText.textContent = 'Create Account';
+        switchText.innerHTML = 'Already have an account? <button type="button" class="link-btn" onclick="switchAuthMode(\'signin\')">Sign in here</button>';
+        forgotLink.style.display = 'none';
+        form.classList.add('auth-mode-signup');
+    }
+}
+
+// Forgot password functionality
+async function showForgotPassword() {
+    const { value: email } = await Swal.fire({
+        title: 'Reset Your Password',
+        html: `
+            <div style="text-align: left;">
+                <p style="margin-bottom: 15px; color: #666;">Enter your email address and we'll send you a link to reset your password.</p>
+            </div>
+        `,
+        input: 'email',
+        inputPlaceholder: 'Enter your email address',
+        inputValue: document.getElementById('login-email').value,
+        showCancelButton: true,
+        confirmButtonText: 'Send Reset Email',
+        confirmButtonColor: '#667eea',
+        cancelButtonColor: '#6c757d',
+        inputValidator: (value) => {
+            if (!value) {
+                return 'Please enter your email address';
+            }
+            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+                return 'Please enter a valid email address';
+            }
+        }
+    });
+
+    if (email) {
+        try {
+            const { error } = await supabase.auth.resetPasswordForEmail(email, {
+                redirectTo: `${window.location.origin}${window.location.pathname}`
+            });
+
+            if (error) {
+                throw error;
+            }
+
+            Swal.fire({
+                title: 'Reset Email Sent! 📧',
+                html: `
+                    <div style="text-align: left;">
+                        <p>We've sent password reset instructions to:</p>
+                        <p style="font-weight: bold; color: #667eea; margin: 15px 0;">${email}</p>
+                        <p>Please check your email and follow the link to reset your password.</p>
+                        <p style="font-size: 14px; color: #666; margin-top: 15px;">
+                            <strong>Note:</strong> The reset link will expire in 1 hour for security.
+                        </p>
+                    </div>
+                `,
+                icon: 'success',
+                confirmButtonColor: '#667eea',
+                confirmButtonText: 'Got it!'
+            });
+        } catch (error) {
+            Swal.fire({
+                icon: 'error',
+                title: 'Unable to Send Reset Email',
+                text: error.message,
+                confirmButtonColor: '#667eea'
+            });
+        }
+    }
+}
+
+// Handle password reset from email link
+async function handlePasswordReset() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const access_token = urlParams.get('access_token');
+    const refresh_token = urlParams.get('refresh_token');
+    const type = urlParams.get('type');
+    const error = urlParams.get('error');
+    const error_description = urlParams.get('error_description');
+
+    // Check for errors first (like expired links)
+    if (error) {
+        let title = 'Reset Link Error';
+        let message = 'There was an error with your password reset link.';
+        
+        if (error === 'access_denied' || error_description?.includes('expired')) {
+            title = 'Reset Link Expired ⏰';
+            message = 'This password reset link has expired. Reset links are only valid for 1 hour for security reasons.';
+        } else if (error_description?.includes('invalid')) {
+            title = 'Invalid Reset Link';
+            message = 'This password reset link is invalid or has already been used.';
+        }
+
+        Swal.fire({
+            icon: 'error',
+            title: title,
+            html: `
+                <div style="text-align: left;">
+                    <p style="margin-bottom: 15px;">${message}</p>
+                    <p style="font-weight: 600; color: #667eea;">Would you like to request a new password reset?</p>
+                </div>
+            `,
+            showCancelButton: true,
+            confirmButtonText: 'Send New Reset Email',
+            cancelButtonText: 'Cancel',
+            confirmButtonColor: '#667eea',
+            cancelButtonColor: '#6c757d'
+        }).then((result) => {
+            // Clear URL parameters
+            window.history.replaceState({}, document.title, window.location.pathname);
+            
+            if (result.isConfirmed) {
+                // Open the forgot password dialog
+                showForgotPassword();
+            }
+        });
+        return;
+    }
+
+    if (type === 'recovery' && access_token && refresh_token) {
+        try {
+            // Set the session with the tokens from the URL
+            const { data, error } = await supabase.auth.setSession({
+                access_token,
+                refresh_token
+            });
+
+            if (error) {
+                throw error;
+            }
+
+            // Show password reset form
+            await showNewPasswordForm();
+        } catch (error) {
+            console.error('Error handling password reset:', error);
+            
+            let title = 'Reset Link Error';
+            let message = 'This password reset link is invalid or has expired. Please request a new one.';
+            
+            // Check for specific error types
+            if (error.message?.includes('expired') || error.message?.includes('invalid_grant')) {
+                title = 'Reset Link Expired ⏰';
+                message = 'This password reset link has expired. Reset links are only valid for 1 hour for security reasons.';
+            }
+            
+            Swal.fire({
+                icon: 'error',
+                title: title,
+                html: `
+                    <div style="text-align: left;">
+                        <p style="margin-bottom: 15px;">${message}</p>
+                        <p style="font-weight: 600; color: #667eea;">Would you like to request a new password reset?</p>
+                    </div>
+                `,
+                showCancelButton: true,
+                confirmButtonText: 'Send New Reset Email',
+                cancelButtonText: 'Cancel',
+                confirmButtonColor: '#667eea',
+                cancelButtonColor: '#6c757d'
+            }).then((result) => {
+                // Clear URL parameters
+                window.history.replaceState({}, document.title, window.location.pathname);
+                
+                if (result.isConfirmed) {
+                    showForgotPassword();
+                }
+            });
+        }
+    }
+}
+
+// Show new password form
+async function showNewPasswordForm() {
+    const { value: formValues } = await Swal.fire({
+        title: 'Set New Password',
+        html: `
+            <div style="text-align: left;">
+                <div style="margin-bottom: 15px;">
+                    <label style="display: block; margin-bottom: 5px; font-weight: 600;">New Password:</label>
+                    <input type="password" id="new-password" class="swal2-input" placeholder="Enter new password" style="margin: 0;">
+                </div>
+                <div style="margin-bottom: 15px;">
+                    <label style="display: block; margin-bottom: 5px; font-weight: 600;">Confirm Password:</label>
+                    <input type="password" id="confirm-password" class="swal2-input" placeholder="Confirm new password" style="margin: 0;">
+                </div>
+                <div style="font-size: 14px; color: #666; margin-top: 10px;">
+                    <p>Password must be at least 6 characters long.</p>
+                </div>
+            </div>
+        `,
+        showCancelButton: true,
+        confirmButtonText: 'Update Password',
+        confirmButtonColor: '#667eea',
+        cancelButtonColor: '#6c757d',
+        focusConfirm: false,
+        preConfirm: () => {
+            const newPassword = document.getElementById('new-password').value;
+            const confirmPassword = document.getElementById('confirm-password').value;
+            
+            if (!newPassword || !confirmPassword) {
+                Swal.showValidationMessage('Please fill in both password fields');
+                return false;
+            }
+            
+            if (newPassword.length < 6) {
+                Swal.showValidationMessage('Password must be at least 6 characters long');
+                return false;
+            }
+            
+            if (newPassword !== confirmPassword) {
+                Swal.showValidationMessage('Passwords do not match');
+                return false;
+            }
+            
+            return { newPassword, confirmPassword };
+        }
+    });
+
+    if (formValues) {
+        try {
+            const { error } = await supabase.auth.updateUser({
+                password: formValues.newPassword
+            });
+
+            if (error) {
+                throw error;
+            }
+
+            Swal.fire({
+                title: 'Password Updated! 🎉',
+                text: 'Your password has been successfully updated. You can now sign in with your new password.',
+                icon: 'success',
+                confirmButtonColor: '#667eea'
+            }).then(() => {
+                // Clear URL parameters and redirect to login
+                window.history.replaceState({}, document.title, window.location.pathname);
+                window.location.reload();
+            });
+
+        } catch (error) {
+            console.error('Error updating password:', error);
+            Swal.fire({
+                icon: 'error',
+                title: 'Error Updating Password',
+                text: error.message,
+                confirmButtonColor: '#667eea'
+            });
+        }
+    }
+}
+
+// Add to window exports
+window.handlePasswordReset = handlePasswordReset;
+
+// Add these to your window exports at the bottom of script.js
+window.togglePasswordVisibility = togglePasswordVisibility;
+window.switchAuthMode = switchAuthMode;
+window.showForgotPassword = showForgotPassword;
+
 window.showSection = showSection;
 window.startRound = startRound;
 window.updateScore = updateScore;
@@ -3354,20 +3714,27 @@ window.toggleNewRoundSection = toggleNewRoundSection;
 window.autoCollapseNewRound = autoCollapseNewRound;
 window.restoreNewRoundState = restoreNewRoundState;
 
-// Update the existing window.addEventListener at the bottom of script.js
 window.addEventListener("DOMContentLoaded", async () => {
-  const { data: { session } } = await supabase.auth.getSession();
-  if (session) {
-    console.log("Restored session:", session.user.email);
-    loginSuccessful();
-    await loadProfile();
-    await loadCourses();
-    await loadCurrentRound();
-    showSection('new-round');
+    // Check for password reset parameters in both search and hash
+    const urlParams = new URLSearchParams(window.location.search);
+    const hashParams = new URLSearchParams(window.location.hash.substring(1));
     
-    // Restore the new round section collapse state
-    setTimeout(restoreNewRoundState, 100);
-  } else {
-    console.log("User is not logged in");
-  }
+    if (urlParams.get('type') === 'recovery' || hashParams.get('type') === 'recovery' || 
+        urlParams.has('error') || hashParams.has('error') || hashParams.has('error_code')) {
+        await handlePasswordReset();
+        return;
+    }
+
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session) {
+        console.log("Restored session:", session.user.email);
+        loginSuccessful();
+        await loadProfile();
+        await loadCourses();
+        showSection('new-round')
+        await loadCurrentRound();
+        
+    } else {
+        console.log("User is not logged in");
+    }
 });

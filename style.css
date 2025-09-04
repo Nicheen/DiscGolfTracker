@@ -599,3 +599,79 @@ input:focus, select:focus, textarea:focus {
 html, body {
     overflow-x: hidden;
 }
+
+/* Ensure the password input has enough padding for the button */
+#login-password {
+    padding-right: 45px !important;
+}
+
+.password-toggle-btn:hover {
+    color: #667eea;
+}
+
+.auth-mode-container {
+    margin-top: 20px;
+}
+
+.auth-mode-tabs {
+    display: flex;
+    background: #f8f9fa;
+    border-radius: 10px;
+    padding: 4px;
+    margin-bottom: 20px;
+}
+
+.auth-tab {
+    flex: 1;
+    padding: 10px 16px;
+    border: none;
+    background: transparent;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 14px;
+    transition: all 0.3s ease;
+    color: #6c757d;
+}
+
+.auth-tab.active {
+    background: white;
+    color: #667eea;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.btn-primary {
+    width: 100%;
+    margin-bottom: 15px;
+}
+
+.forgot-password-link {
+    text-align: center;
+    margin-bottom: 15px;
+}
+
+.auth-switch-text {
+    text-align: center;
+    font-size: 14px;
+    color: #6c757d;
+}
+
+.link-btn {
+    background: none;
+    border: none;
+    color: #667eea;
+    cursor: pointer;
+    font-size: inherit;
+    text-decoration: underline;
+    padding: 0;
+    font-weight: 600;
+}
+
+.link-btn:hover {
+    color: #764ba2;
+}
+
+/* Hide forgot password link during signup */
+.auth-mode-signup .forgot-password-link {
+    display: none;
+}

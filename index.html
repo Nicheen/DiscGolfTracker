@@ -21,16 +21,43 @@
             </div>
             
             <div class="login-content">
-                <h2>Welcome Back!</h2>
-                <p>Sign in to access your disc golf data and connect with friends.</p>
+                <h2 id="auth-title">Welcome Back!</h2>
+                <p id="auth-subtitle">Sign in to access your disc golf data and connect with friends.</p>
                 
                 <!-- SIGN UP / LOGIN FORM -->
                 <form id="auth-form">
-                    <input type="email" id="login-email" placeholder="Email" required />
-                    <input type="password" id="login-password" placeholder="Password" required />
+                    <div class="form-group">
+                        <input type="email" id="login-email" placeholder="Email" required 
+                            class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" />
+                    </div>
                     
-                    <button class="btn" type="button" onclick="signUp()">Sign Up</button>
-                    <button class="btn" type="button" onclick="signIn()">Sign In</button>
+                    <div class="form-group">
+                        <div class="relative">
+                            <input type="password" id="login-password" placeholder="Password" required 
+                                class="w-full pr-12 px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" />
+                            <button type="button" onclick="togglePasswordVisibility()" 
+                                    class="absolute pb-4 top-1/2 right-3 transform -translate-y-1/2 flex items-center justify-center w-8 h-8 text-gray-400 hover:text-indigo-600 transition-colors duration-200 rounded">
+                                <svg id="password-toggle-icon" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                                    <circle cx="12" cy="12" r="3"></circle>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="auth-mode-container">
+                        <button class="btn btn-primary" type="button" id="auth-submit-btn" onclick="signIn()">
+                            <span id="auth-btn-text">Sign In</span>
+                        </button>
+                        
+                        <div id="forgot-password-link" class="forgot-password-link">
+                            <button type="button" class="link-btn" onclick="showForgotPassword()">Forgot your password?</button>
+                        </div>
+                        
+                        <div id="auth-switch-text" class="auth-switch-text">
+                            Don't have an account? <button type="button" class="link-btn" onclick="switchAuthMode('signup')">Sign up here</button>
+                        </div>
+                    </div>
                 </form>
             </div>
         </div>
