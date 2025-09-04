@@ -1030,7 +1030,7 @@ async function updateHoleDisplay(course, players, holeIndex) {
     // Update hole info
     document.getElementById('current-hole-number').textContent = holeIndex + 1;
     document.getElementById('current-par').textContent = par;
-    document.getElementById('current-distance').textContent = distance;
+    document.getElementById('current-distance').textContent = distance + 'm';
     
     // Update navigation buttons
     const prevBtn = document.getElementById('prev-hole');
@@ -1067,8 +1067,10 @@ async function updateHoleDisplay(course, players, holeIndex) {
     
     // Create player cards asynchronously to load profile pictures
     const createPlayerCard = async (player) => {
-        const currentScore = currentRound && currentRound.scores[player] ? 
-            currentRound.scores[player][holeIndex] : 0;
+        // Get the player ID to access scores properly
+        const playerId = currentRound.usernameToPlayerId[player];
+        const currentScore = currentRound && currentRound.scores[playerId] ? 
+            currentRound.scores[playerId][holeIndex] : 0;
         const displayScore = currentScore > 0 ? currentScore : '-';
         const scoreDiff = currentScore > 0 ? currentScore - par : 0;
         const scoreText = scoreDiff === 0 ? 'E' : scoreDiff > 0 ? `+${scoreDiff}` : scoreDiff.toString();
@@ -1519,7 +1521,7 @@ async function loadHistory() {
     if (!user) return;
 
     const container = document.getElementById('history-list');
-    container.innerHTML = '<div style="text-align: center;">Loading history...</div>';
+    container.innerHTML = '<div class="text-center text-gray-500">Loading history...</div>';
 
     try {
         const { data: rounds, error } = await supabase
@@ -1531,14 +1533,15 @@ async function loadHistory() {
 
         if (error) {
             console.error('Error loading history:', error);
-            container.innerHTML = '<div style="text-align: center; color: #dc3545;">Error loading history</div>';
+            container.innerHTML = '<div class="text-center text-red-500">Error loading history</div>';
             return;
         }
 
         container.innerHTML = '';
+        container.className = 'space-y-4';
 
         if (!rounds || rounds.length === 0) {
-            container.innerHTML = '<p style="text-align: center; color: #6c757d; margin: 40px 0;">No rounds completed yet. Finish your first round!</p>';
+            container.innerHTML = '<div class="text-center text-gray-500 py-12">No rounds completed yet. Finish your first round!</div>';
             return;
         }
 
@@ -1552,9 +1555,6 @@ async function loadHistory() {
         const currentUsername = profile?.username;
 
         rounds.forEach(round => {
-            const item = document.createElement('div');
-            item.className = 'history-item';
-
             // Find course data for par calculation
             const course = coursesData.find(c => c.id == round.course_id);
             const par = course ? course.holes.reduce((a, b) => a + b, 0) : 0;
@@ -1567,33 +1567,67 @@ async function loadHistory() {
                 yourScore = round.final_scores[currentUsername];
             }
 
+            // Calculate score difference text
+            const scoreDiff = yourScore > 0 && par > 0 ? yourScore - par : null;
+            const scoreDiffText = scoreDiff === null ? '' : 
+                scoreDiff > 0 ? `+${scoreDiff}` : 
+                scoreDiff === 0 ? 'E' : 
+                scoreDiff.toString();
+
             // Display player scores - use the player_usernames mapping if available
-            let playerScores = '';
+            let topPlayers = [];
             if (round.player_usernames && round.final_scores_by_id) {
-                playerScores = Object.entries(round.final_scores_by_id)
-                    .map(([playerId, score]) => {
-                        const username = round.player_usernames[playerId] || 'Unknown';
-                        return `${username}: ${score}`;
-                    })
-                    .join(' | ');
+                topPlayers = Object.entries(round.final_scores_by_id)
+                    .map(([playerId, score]) => ({
+                        name: round.player_usernames[playerId] || 'Unknown',
+                        score: score
+                    }))
+                    .sort((a, b) => a.score - b.score)
+                    .slice(0, 3);
             } else if (round.final_scores) {
-                // Fallback to old format
-                playerScores = Object.entries(round.final_scores)
-                    .map(([player, score]) => `${player}: ${score}`)
-                    .join(' | ');
+                topPlayers = Object.entries(round.final_scores)
+                    .map(([player, score]) => ({ name: player, score: score }))
+                    .sort((a, b) => a.score - b.score)
+                    .slice(0, 3);
             }
 
+            const item = document.createElement('div');
+            item.className = 'bg-white rounded-xl shadow-md hover:shadow-lg border border-gray-200 cursor-pointer transition-all duration-200 hover:border-indigo-300 overflow-hidden';
+            item.onclick = () => viewRoundDetails(round.id);
+
             item.innerHTML = `
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                    <h4>${round.course_name}</h4>
-                    <span style="color: #6c757d;">${round.date}</span>
-                </div>
-                <p><strong>Players:</strong> ${round.players.join(', ')}</p>
-                <p><strong>Scores:</strong> ${playerScores}</p>
-                ${currentUsername && yourScore > 0 ? `<p><strong>Your Performance:</strong> ${yourScore} (${scoreDiffText} vs par ${par})</p>` : ''}
-                <div style="margin-top: 10px;">
-                    <button class="btn" onclick="viewRoundDetails('${round.id}')" style="padding: 5px 10px; font-size: 0.9em; margin-right: 10px;">View Details</button>
-                    <button class="btn" onclick="deleteRound('${round.id}')" style="padding: 5px 10px; font-size: 0.9em; background: #dc3545;">Delete</button>
+                <div class="p-6">
+                    <div class="flex justify-between items-start mb-4">
+                        <div>
+                            <h3 class="text-xl font-bold text-gray-900 mb-1">${round.course_name}</h3>
+                            <p class="text-sm text-gray-500">${round.date}</p>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-2xl font-bold text-indigo-600">${yourScore || '-'}</div>
+                            ${scoreDiffText ? `<div class="text-sm font-medium ${scoreDiff > 0 ? 'text-red-500' : scoreDiff < 0 ? 'text-green-500' : 'text-gray-600'}">${scoreDiffText}</div>` : ''}
+                        </div>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <p class="text-sm text-gray-600 mb-2">Players: ${round.players.join(', ')}
+                    </div>
+                    
+                    ${topPlayers.length > 0 ? `
+                        <div class="border-t pt-4">
+                            <p class="text-sm font-medium text-gray-700 mb-2">Leaderboard (course par ${par}):</p>
+                            <div class="flex flex-wrap gap-2">
+                                ${topPlayers.map((player, index) => `
+                                    <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${
+                                        index === 0 ? 'bg-yellow-100 text-yellow-800' : 
+                                        index === 1 ? 'bg-gray-100 text-gray-800' : 
+                                        'bg-orange-100 text-orange-800'
+                                    }">
+                                        ${index + 1}. ${player.name}: ${player.score}
+                                    </span>
+                                `).join('')}
+                            </div>
+                        </div>
+                    ` : ''}
                 </div>
             `;
 
@@ -1601,7 +1635,7 @@ async function loadHistory() {
         });
     } catch (error) {
         console.error('Error loading history:', error);
-        container.innerHTML = '<div style="text-align: center; color: #dc3545;">Error loading history</div>';
+        container.innerHTML = '<div class="text-center text-red-500">Error loading history</div>';
     }
 }
 
@@ -1919,17 +1953,129 @@ async function viewRoundDetails(roundId) {
             detailsHTML += '</table>';
         }
 
-        detailsHTML += '</div>';
+        detailsHTML += `
+                <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #dee2e6; text-align: center;">
+                    <div style="display: flex; gap: 10px; justify-content: center;">
+                        <button onclick="copyRoundToText('${roundId}')" 
+                                style="background: #28a745; color: white; border: none; padding: 10px 20px; border-radius: 8px; font-weight: 600; cursor: pointer;">
+                            📋 Copy Round
+                        </button>
+                        <button onclick="deleteRoundFromDetails('${roundId}')" 
+                                style="background: #dc3545; color: white; border: none; padding: 10px 20px; border-radius: 8px; font-weight: 600; cursor: pointer;">
+                            🗑️ Delete Round
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
 
         Swal.fire({
             title: "Round Details",
             html: detailsHTML,
             width: '80%',
-            showCloseButton: true
+            showCloseButton: true,
+            showConfirmButton: false
         });
 
     } catch (error) {
         console.error('Error viewing round details:', error);
+    }
+}
+
+async function deleteRoundFromDetails(roundId) {
+    Swal.close(); // Close the details popup first
+    await deleteRound(roundId); // Use the existing delete function
+}
+
+async function copyRoundToText(roundId) {
+    try {
+        const { data: round, error } = await supabase
+            .from('rounds')
+            .select('*')
+            .eq('id', roundId)
+            .single();
+
+        if (error || !round) {
+            Swal.fire({
+                icon: "error",
+                title: "Error",
+                text: "Could not load round data",
+            });
+            return;
+        }
+
+        // Find course to get hole count
+        const course = coursesData.find(c => c.id == round.course_id);
+        if (!course) {
+            Swal.fire({
+                icon: "error",
+                title: "Error",
+                text: "Could not find course information",
+            });
+            return;
+        }
+
+        let roundText = `${round.course_name} - ${round.date}\n\n`;
+
+        // Determine which format to use and build the text
+        const useNewFormat = round.player_ids && round.player_usernames && round.scores;
+        
+        if (useNewFormat) {
+            // New format: use player IDs and usernames mapping
+            round.player_ids.forEach(playerId => {
+                const playerName = round.player_usernames[playerId] || `User_${playerId.substring(0, 8)}`;
+                const playerScores = round.scores[playerId] || [];
+                
+                // Ensure we have scores for all holes
+                const scoresText = course.holes.map((_, index) => 
+                    playerScores[index] || '0'
+                ).join(' ');
+                
+                roundText += `${playerName}: ${scoresText}\n`;
+            });
+        } else {
+            // Old format: use players array and scores by username
+            round.players.forEach(playerName => {
+                const playerScores = round.scores[playerName] || [];
+                
+                // Ensure we have scores for all holes
+                const scoresText = course.holes.map((_, index) => 
+                    playerScores[index] || '0'
+                ).join(' ');
+                
+                roundText += `${playerName}: ${scoresText}\n`;
+            });
+        }
+
+        // Copy to clipboard
+        await navigator.clipboard.writeText(roundText.trim());
+        
+        Swal.fire({
+            title: "Round Copied!",
+            text: "Round data has been copied to your clipboard",
+            icon: "success",
+            timer: 2000,
+            showConfirmButton: false
+        });
+
+    } catch (error) {
+        console.error('Error copying round:', error);
+        
+        // Fallback for browsers that don't support clipboard API
+        if (error.name === 'NotAllowedError' || !navigator.clipboard) {
+            Swal.fire({
+                icon: "info",
+                title: "Copy Manually",
+                html: `<div style="text-align: left;"><p>Please copy this text manually:</p><textarea readonly style="width: 100%; height: 200px; margin-top: 10px; padding: 10px; border: 1px solid #ccc; border-radius: 4px;">${roundText.trim()}</textarea></div>`,
+                width: '80%'
+            });
+        } else {
+            Swal.fire({
+                icon: "error",
+                title: "Error",
+                text: "Failed to copy round data",
+            });
+        }
     }
 }
 
@@ -2206,6 +2352,8 @@ window.loadHistory = loadHistory;
 window.changeHole = changeHole;
 window.goToHole = goToHole;
 window.deleteCurrentRound = deleteCurrentRound;
+window.deleteRoundFromDetails = deleteRoundFromDetails;
+window.copyRoundToText = copyRoundToText;
 
 // Run on page load
 window.addEventListener("DOMContentLoaded", async () => {
