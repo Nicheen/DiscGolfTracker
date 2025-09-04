@@ -269,6 +269,11 @@
     }
 }
 
+/* Enhanced mobile scorecard styles */
+@media (max-width: 768px) {
+    
+}
+
 /* Landscape orientation adjustments for mobile */
 @media (max-width: 768px) and (orientation: landscape) {
     .nav {

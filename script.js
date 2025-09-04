@@ -142,18 +142,20 @@ async function addFriend() {
     }
 
     try {
-        // First, find the user by username
+        // First, find the user by username - remove any extra characters
+        const cleanUsername = friendUsername.replace(/[;\s]+$/, ''); // Remove trailing semicolons and spaces
+        
         const { data: friendProfile, error: findError } = await supabase
             .from('profiles')
             .select('id, username')
-            .eq('username', friendUsername)
+            .eq('username', cleanUsername)
             .single();
 
         if (findError || !friendProfile) {
             Swal.fire({
                 icon: "error",
                 title: "User Not Found",
-                text: `No user found with username: ${friendUsername}`,
+                text: `No user found with username: ${cleanUsername}`,
             });
             return;
         }
@@ -178,7 +180,7 @@ async function addFriend() {
             Swal.fire({
                 icon: "info",
                 title: "Already Friends",
-                text: `You are already friends with ${friendUsername}!`,
+                text: `You are already friends with ${cleanUsername}!`,
             });
             return;
         }
@@ -202,10 +204,11 @@ async function addFriend() {
         } else {
             Swal.fire({
                 title: "Friend Added!",
-                text: `${friendUsername} has been added to your friends list.`,
+                text: `${cleanUsername} has been added to your friends list.`,
                 icon: "success"
             });
             document.getElementById('friend-username').value = '';
+            clearSearchResults();
             loadFriends(); // Reload the friends list
         }
     } catch (error) {
@@ -279,12 +282,13 @@ async function loadFriends() {
 
         // Display each friend with their stats
         friendProfiles.forEach(friend => {
-            // Calculate stats from their rounds
+            // Calculate stats from their rounds - look for rounds where they were a player
             const friendRounds = allFriendRounds?.filter(r => r.user_id === friend.id) || [];
+            
+            // Get scores from final_scores using friend's username
             const scores = friendRounds
                 .map(round => {
-                    // Use friend's username to get their score
-                    if (round.final_scores && friend.username && round.final_scores[friend.username]) {
+                    if (round.final_scores && friend.username && round.final_scores[friend.username] != null) {
                         return round.final_scores[friend.username];
                     }
                     return null;
@@ -314,7 +318,7 @@ async function loadFriends() {
                         </div>
                     </div>
                     <div class="flex flex-col space-y-1 flex-shrink-0">
-                        <button onclick="event.stopPropagation(); addFriendToRound('${friend.username}; ')" 
+                        <button onclick="event.stopPropagation(); addFriendToRound('${friend.username}')" 
                             class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs px-3 py-1.5 rounded-md transition-colors duration-200 font-medium">
                             Invite
                         </button>
@@ -496,7 +500,20 @@ async function removeFriend(friendId, friendUsername) {
 
 // Add friend to current round players
 async function addFriendToRound(friendUsername) {
+    // Clean the username and check if it's a guest
+    const cleanUsername = friendUsername.trim();
+    
+    if (cleanUsername.includes('(Guest)')) {
+        Swal.fire({
+            icon: "warning",
+            title: "Cannot Add Guest",
+            text: "Guest players cannot be added as friends. They need to create an account first.",
+        });
+        return;
+    }
+    
     const playersInput = document.getElementById('players');
+
     if (!playersInput) {
         Swal.fire({
             icon: "warning",
@@ -699,12 +716,16 @@ async function searchUsers() {
         }
     }, 500); // 500ms debounce
 }
+
 // Send friend request (simplified - auto-accept for now)
 async function sendFriendRequest(friendId, friendUsername) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
     try {
+        // Clean the username
+        const cleanUsername = friendUsername.trim();
+        
         // Check if friendship already exists
         const { data: existingFriendship } = await supabase
             .from('friendships')
@@ -716,7 +737,7 @@ async function sendFriendRequest(friendId, friendUsername) {
             Swal.fire({
                 icon: "info",
                 title: "Already Friends",
-                text: `You are already friends with ${friendUsername}!`,
+                text: `You are already friends with ${cleanUsername}!`,
             });
             return;
         }
@@ -740,7 +761,7 @@ async function sendFriendRequest(friendId, friendUsername) {
         } else {
             Swal.fire({
                 title: "Friend Added!",
-                text: `${friendUsername} has been added to your friends list.`,
+                text: `${cleanUsername} has been added to your friends list.`,
                 icon: "success"
             });
             document.getElementById('friend-username').value = '';
@@ -756,6 +777,7 @@ async function sendFriendRequest(friendId, friendUsername) {
         });
     }
 }
+
 // Clear search results
 function clearSearchResults() {
     const resultsContainer = document.getElementById('user-search-results');
@@ -847,7 +869,8 @@ async function startRound() {
     const playerIds = [];
     const playerIdToUsername = {};
     const usernameToPlayerId = {};
-    
+    const guestPlayers = []; // Store guest players separately
+
     for (const playerName of players) {
         if (playerName.toLowerCase() === 'you' || playerName === currentUsername || playerName == "") {
             // Current user
@@ -855,7 +878,7 @@ async function startRound() {
             playerIdToUsername[user.id] = currentUsername;
             usernameToPlayerId[currentUsername] = user.id;
         } else {
-            // Find user by username
+            // Try to find user by username
             const { data: playerProfile } = await supabase
                 .from('profiles')
                 .select('id, username')
@@ -863,38 +886,49 @@ async function startRound() {
                 .single();
             
             if (playerProfile) {
+                // Registered user
                 playerIds.push(playerProfile.id);
                 playerIdToUsername[playerProfile.id] = playerProfile.username;
                 usernameToPlayerId[playerProfile.username] = playerProfile.id;
             } else {
-                // Handle case where username doesn't exist
-                Swal.fire({
-                    icon: "warning",
-                    title: "Player Not Found",
-                    text: `Player "${playerName}" not found. They may need to create an account first.`,
-                });
-                return;
+                // Guest player - store in separate array
+                const guestDisplayName = `${playerName} (Guest)`;
+                guestPlayers.push(playerName);
+                // For local tracking, use a guest identifier
+                const guestId = `guest_${playerName.replace(/\s+/g, '_').toLowerCase()}`;
+                playerIdToUsername[guestId] = guestDisplayName;
+                usernameToPlayerId[guestDisplayName] = guestId;
             }
         }
     }
 
-    // Initialize scores object using player IDs
+    console.log('Player IDs that will be saved:', playerIds);
+    console.log('Player ID to Username mapping:', playerIdToUsername);
+    console.log('Guest players:', guestPlayers);
+
+    // Initialize scores object using player IDs and guest IDs
     const initialScores = {};
     playerIds.forEach(playerId => {
         initialScores[playerId] = new Array(course.holes.length).fill(0);
     });
 
+    guestPlayers.forEach(guestName => {
+        const guestId = `guest_${guestName.replace(/\s+/g, '_').toLowerCase()}`;
+        initialScores[guestId] = new Array(course.holes.length).fill(0);
+    });
+
     try {
-        // Save the round to Supabase with both old and new formats for compatibility
+        // Save the round to Supabase - only store registered player IDs in player_ids
         const { data: newRound, error } = await supabase
             .from('rounds')
             .insert({
                 user_id: user.id,
                 course_id: parseInt(courseId),
                 course_name: course.name,
-                players: playerIds.map(id => playerIdToUsername[id]), // Keep old format for compatibility
-                player_ids: playerIds,
-                player_usernames: playerIdToUsername, // Store mapping for display
+                players: [...playerIds.map(id => playerIdToUsername[id]), ...guestPlayers.map(name => `${name} (Guest)`)], // All players for display
+                player_ids: playerIds, // Only registered user IDs
+                player_usernames: playerIdToUsername, // Mapping for registered users
+                guest_players: guestPlayers, // Store guest players separately
                 scores: initialScores,
                 date: new Date().toLocaleDateString(),
                 status: 'in_progress'
@@ -912,21 +946,26 @@ async function startRound() {
             return;
         }
 
-        // Set current round with both IDs and usernames for display
+        console.log('Created round with player_ids:', newRound.player_ids);
+
+        // Set current round with both registered and guest players
+        const allPlayerIds = [...playerIds, ...guestPlayers.map(name => `guest_${name.replace(/\s+/g, '_').toLowerCase()}`)];
         currentRound = {
             id: newRound.id,
             courseId: courseId,
             courseName: course.name,
-            playerIds: playerIds,
+            playerIds: allPlayerIds,
+            registeredPlayerIds: playerIds, // Keep track of registered players only
+            guestPlayers: guestPlayers,
             playerIdToUsername: playerIdToUsername,
             usernameToPlayerId: usernameToPlayerId,
             scores: initialScores,
             date: new Date().toLocaleDateString()
         };
         
-        // Create scorecard using usernames for display but IDs for data
-        const playerUsernames = playerIds.map(id => playerIdToUsername[id]);
-        createScorecard(course, playerUsernames);
+        // Create scorecard using display names
+        const allPlayerNames = [...playerIds.map(id => playerIdToUsername[id]), ...guestPlayers.map(name => `${name} (Guest)`)];
+        createScorecard(course, allPlayerNames);
         document.getElementById('current-course').textContent = course.name;
         document.getElementById('scorecard').style.display = 'block';
 
@@ -1166,6 +1205,11 @@ async function deleteCurrentRound() {
 
 // Replace the existing getPlayerProfilePicture function
 async function getPlayerProfilePicture(playerName) {
+    // Check if it's a guest player
+    if (playerName.includes('(Guest)')) {
+        return "./images/guest.png"; // You can create a guest icon or use a different default
+    }
+    
     // Check cache first with timestamp
     const cached = profilePictureCache[playerName];
     if (cached && (Date.now() - cached.timestamp < CACHE_DURATION)) {
@@ -1201,6 +1245,7 @@ async function getPlayerProfilePicture(playerName) {
         return fallback;
     }
 }
+
 // Helper function to get user ID from username
 async function getUserIdFromUsername(username) {
     try {
@@ -1454,7 +1499,7 @@ async function finishRound() {
     if (!user) return;
 
     try {
-        // Calculate final scores - we need to store them by username for the existing schema
+        // Calculate final scores - include both registered users and guests
         const finalScoresByUsername = {};
         
         Object.keys(currentRound.scores).forEach(playerId => {
@@ -1468,21 +1513,68 @@ async function finishRound() {
             }
         });
 
-        // Update the round in Supabase with only the columns that exist
-        const { error } = await supabase
+        // Update the current round (owned by the user who created it)
+        const { error: updateError } = await supabase
             .from('rounds')
             .update({
-                final_scores: finalScoresByUsername, // Store by username as per existing schema
+                final_scores: finalScoresByUsername,
                 status: 'completed',
-                player_ids: currentRound.playerIds,
+                player_ids: currentRound.registeredPlayerIds || currentRound.playerIds.filter(id => !id.startsWith('guest_')),
                 player_usernames: currentRound.playerIdToUsername,
-                players: Object.values(currentRound.playerIdToUsername), // Array of usernames for compatibility
+                guest_players: currentRound.guestPlayers || [],
+                players: Object.values(currentRound.playerIdToUsername),
+                scores: currentRound.scores,
                 updated_at: new Date()
             })
             .eq('id', currentRound.id);
 
-        if (error) {
-            throw error;
+        if (updateError) {
+            throw updateError;
+        }
+
+        // Create duplicate entries for other registered players only (not guests)
+        const allRegisteredPlayerIds = currentRound.playerIds.filter(id => !id.startsWith('guest_'));
+        const otherRegisteredPlayerIds = (currentRound.registeredPlayerIds || currentRound.playerIds.filter(id => !id.startsWith('guest_')))
+            .filter(id => id !== user.id);
+        
+        console.log('Creating duplicates for players:', otherRegisteredPlayerIds);
+        
+        if (otherRegisteredPlayerIds.length > 0) {
+            const duplicateRounds = otherRegisteredPlayerIds.map(playerId => ({
+                user_id: playerId, // This is the key - each player gets their own entry
+                course_id: parseInt(currentRound.courseId),
+                course_name: currentRound.courseName,
+                players: [...allRegisteredPlayerIds.map(id => currentRound.playerIdToUsername[id]), ...(currentRound.guestPlayers || []).map(name => `${name} (Guest)`)],
+                player_ids: allRegisteredPlayerIds,
+                player_usernames: currentRound.playerIdToUsername,
+                guest_players: currentRound.guestPlayers || [],
+                scores: currentRound.scores,
+                final_scores: finalScoresByUsername,
+                date: currentRound.date,
+                status: 'completed',
+                created_at: new Date(),
+                updated_at: new Date()
+            }));
+
+            console.log('Inserting duplicate rounds:', duplicateRounds);
+
+            const { data: insertedRounds, error: insertError } = await supabase
+                .from('rounds')
+                .insert(duplicateRounds)
+                .select();
+
+            if (insertError) {
+                console.error('Error creating duplicate rounds for other players:', insertError);
+                // Don't throw here - the main round was saved successfully
+                Swal.fire({
+                    icon: "warning",
+                    title: "Partial Success",
+                    text: "Round saved but some player stats may not update. Please check with other players.",
+                    timer: 3000
+                });
+            } else {
+                console.log('Successfully created duplicate rounds:', insertedRounds);
+            }
         }
 
         // Clear current round
@@ -1490,7 +1582,7 @@ async function finishRound() {
 
         Swal.fire({
             title: "Round Completed!",
-            text: 'Your round has been saved successfully.',
+            text: 'Your round has been saved successfully for all players.',
             icon: "success",
             timer: 3000,
             showConfirmButton: false
@@ -1574,12 +1666,12 @@ async function loadHistory() {
                 scoreDiff === 0 ? 'E' : 
                 scoreDiff.toString();
 
-            // Display player scores - use the player_usernames mapping if available
+            // Display player scores - handle both registered users and guests
             let topPlayers = [];
             if (round.player_usernames && round.final_scores_by_id) {
                 topPlayers = Object.entries(round.final_scores_by_id)
                     .map(([playerId, score]) => ({
-                        name: round.player_usernames[playerId] || 'Unknown',
+                        name: round.player_usernames[playerId] || (playerId.startsWith('guest_') ? 'Guest Player' : 'Unknown'),
                         score: score
                     }))
                     .sort((a, b) => a.score - b.score)
@@ -1786,17 +1878,30 @@ async function loadCurrentRound() {
 
             const course = coursesData.find(c => c.id == inProgressRound.course_id);
             if (course) {
-                // Handle both old and new data formats
+                // Handle both old and new data formats, including guest players
                 let playerIds, playerIdToUsername, usernameToPlayerId;
-                
+
                 if (inProgressRound.player_ids && inProgressRound.player_usernames) {
                     // New format
-                    playerIds = inProgressRound.player_ids;
-                    playerIdToUsername = inProgressRound.player_usernames;
+                    playerIds = [...inProgressRound.player_ids];
+                    playerIdToUsername = { ...inProgressRound.player_usernames };
                     usernameToPlayerId = {};
+                    
+                    // Add registered players
                     Object.keys(playerIdToUsername).forEach(id => {
                         usernameToPlayerId[playerIdToUsername[id]] = id;
                     });
+                    
+                    // Add guest players if they exist
+                    if (inProgressRound.guest_players && inProgressRound.guest_players.length > 0) {
+                        inProgressRound.guest_players.forEach(guestName => {
+                            const guestId = `guest_${guestName.replace(/\s+/g, '_').toLowerCase()}`;
+                            const guestDisplayName = `${guestName} (Guest)`;
+                            playerIds.push(guestId);
+                            playerIdToUsername[guestId] = guestDisplayName;
+                            usernameToPlayerId[guestDisplayName] = guestId;
+                        });
+                    }
                 } else {
                     // Old format - need to convert usernames to IDs
                     const players = inProgressRound.players || [];
@@ -1805,13 +1910,20 @@ async function loadCurrentRound() {
                     usernameToPlayerId = {};
                     
                     for (const playerName of players) {
-                        if (playerName === user.email) {
+                        if (playerName.includes('(Guest)')) {
+                            // Handle guest player
+                            const baseName = playerName.replace(' (Guest)', '');
+                            const guestId = `guest_${baseName.replace(/\s+/g, '_').toLowerCase()}`;
+                            playerIds.push(guestId);
+                            playerIdToUsername[guestId] = playerName;
+                            usernameToPlayerId[playerName] = guestId;
+                        } else if (playerName === user.email) {
                             // Current user
                             playerIds.push(user.id);
                             playerIdToUsername[user.id] = playerName;
                             usernameToPlayerId[playerName] = user.id;
                         } else {
-                            // Look up other players
+                            // Look up other registered players
                             const { data: playerProfile } = await supabase
                                 .from('profiles')
                                 .select('id, username')
@@ -1832,6 +1944,8 @@ async function loadCurrentRound() {
                     courseId: inProgressRound.course_id,
                     courseName: inProgressRound.course_name,
                     playerIds: playerIds,
+                    registeredPlayerIds: playerIds.filter(id => !id.startsWith('guest_')),
+                    guestPlayers: inProgressRound.guest_players || [],
                     playerIdToUsername: playerIdToUsername,
                     usernameToPlayerId: usernameToPlayerId,
                     scores: inProgressRound.scores,
@@ -1897,84 +2011,154 @@ async function viewRoundDetails(roundId) {
             return;
         }
 
-        // Create detailed view
-        let detailsHTML = `
-            <div style="text-align: left;">
-                <h3>${round.course_name}</h3>
-                <p><strong>Date:</strong> ${round.date}</p>
-                <p><strong>Players:</strong> ${round.players.join(', ')}</p>
-                <br>
-                <h4>Hole-by-hole scores:</h4>
-        `;
-
         // Find course to get par info
         const course = coursesData.find(c => c.id == round.course_id);
         
+        // Determine which format to use
+        const useNewFormat = round.player_ids && round.player_usernames && round.scores;
+        let displayPlayers = [];
+        
+        if (useNewFormat) {
+            displayPlayers = round.player_ids.map(id => round.player_usernames[id] || `User_${id.substring(0, 8)}`);
+            // Add guest players if they exist
+            if (round.guest_players && round.guest_players.length > 0) {
+                displayPlayers = [...displayPlayers, ...round.guest_players.map(name => `${name} (Guest)`)];
+            }
+        } else {
+            displayPlayers = round.players;
+        }
+
+        // Convert to Date objects
+        const start = new Date(round.created_at);
+        const end   = new Date(round.updated_at);
+
+        // Difference in milliseconds
+        const diffMs = end - start;
+
+        // Convert to different units
+        const diffSeconds = Math.floor(diffMs / 1000);
+        const diffMinutes = Math.floor(diffMs / (1000 * 60));
+        const diffHours   = Math.floor(diffMs / (1000 * 60 * 60));
+
+        // Create mobile-friendly HTML
+        let detailsHTML = `
+            <div class="text-left max-h-[70vh] overflow-y-auto">
+                <div class="mb-4 pb-3 border-b border-gray-200">
+                    <h3 class="text-lg font-bold text-gray-900 mb-1">${round.course_name}</h3>
+                    <p class="text-sm text-gray-600"><strong>Date:</strong> ${round.date} (${diffHours}h ${diffMinutes % 60}m ${diffSeconds % 60}s)</p>
+                    <p class="text-sm text-gray-600"><strong>Players:</strong> ${displayPlayers.join(', ')}</p>
+                </div>
+                
+                <h4 class="font-semibold text-gray-800 mb-3 text-sm">Hole-by-hole scores:</h4>
+        `;
+
         if (course) {
-            detailsHTML += '<table style="width: 100%; border-collapse: collapse; margin: 10px 0;">';
-            // Determine which format to use
-            const useNewFormat = round.player_ids && round.player_usernames && round.scores;
-            const displayPlayers = useNewFormat 
-                ? round.player_ids.map(id => round.player_usernames[id] || `User_${id.substring(0, 8)}`)
-                : round.players;
+            // Mobile-optimized table with horizontal scroll
+            detailsHTML += `
+                <div class="overflow-x-auto mb-4">
+                    <table class="min-w-full text-xs border-collapse">
+                        <thead>
+                            <tr class="bg-gray-100">
+                                <th class="border border-gray-300 p-1 text-center font-medium">H</th>
+            `;
 
-            detailsHTML += '<tr style="background: #f8f9fa;"><th style="border: 1px solid #ddd; padding: 8px;">Hole</th>';
-
+            // Add player headers (abbreviated)
             displayPlayers.forEach(player => {
-                detailsHTML += `<th style="border: 1px solid #ddd; padding: 8px;">${player}</th>`;
+                const shortName = player.length > 6 ? player.substring(0, 6) + '.' : player;
+                detailsHTML += `<th class="border border-gray-300 p-1 text-center font-medium min-w-[40px]">${shortName}</th>`;
             });
-            detailsHTML += '<th style="border: 1px solid #ddd; padding: 8px;">Par</th></tr>';
+            detailsHTML += `<th class="border border-gray-300 p-1 text-center font-medium">Par</th></tr></thead><tbody>`;
 
+            // Add hole rows
             for (let i = 0; i < course.holes.length; i++) {
-                detailsHTML += `<tr><td style="border: 1px solid #ddd; padding: 8px; text-align: center;">${i + 1}</td>`;
+                detailsHTML += `<tr class="hover:bg-gray-50"><td class="border border-gray-300 p-1 text-center font-medium">${i + 1}</td>`;
                 
                 if (useNewFormat) {
+                    // Registered players
                     round.player_ids.forEach(playerId => {
                         const score = round.scores[playerId]?.[i] || '-';
-                        detailsHTML += `<td style="border: 1px solid #ddd; padding: 8px; text-align: center;">${score}</td>`;
+                        detailsHTML += `<td class="border border-gray-300 p-1 text-center">${score}</td>`;
                     });
+                    // Guest players
+                    if (round.guest_players && round.guest_players.length > 0) {
+                        round.guest_players.forEach(guestName => {
+                            const guestId = `guest_${guestName.replace(/\s+/g, '_').toLowerCase()}`;
+                            const score = round.scores[guestId]?.[i] || '-';
+                            detailsHTML += `<td class="border border-gray-300 p-1 text-center">${score}</td>`;
+                        });
+                    }
                 } else {
                     displayPlayers.forEach(player => {
-                        const score = round.scores[player]?.[i] || '-';
-                        detailsHTML += `<td style="border: 1px solid #ddd; padding: 8px; text-align: center;">${score}</td>`;
+                        let score = '-';
+                        if (player.includes('(Guest)')) {
+                            const baseName = player.replace(' (Guest)', '');
+                            const guestId = `guest_${baseName.replace(/\s+/g, '_').toLowerCase()}`;
+                            score = round.scores[guestId]?.[i] || '-';
+                        } else {
+                            score = round.scores[player]?.[i] || '-';
+                        }
+                        detailsHTML += `<td class="border border-gray-300 p-1 text-center">${score}</td>`;
                     });
                 }
                 
-                detailsHTML += `<td style="border: 1px solid #ddd; padding: 8px; text-align: center; font-weight: bold;">${course.holes[i]}</td></tr>`;
+                detailsHTML += `<td class="border border-gray-300 p-1 text-center font-semibold text-indigo-600">${course.holes[i]}</td></tr>`;
             }
 
-            detailsHTML += '<tr style="background: #e9ecef; font-weight: bold;"><td style="border: 1px solid #ddd; padding: 8px;">Total</td>';
-            round.players.forEach(player => {
-                const total = round.final_scores?.[player] || '-';
-                detailsHTML += `<td style="border: 1px solid #ddd; padding: 8px; text-align: center;">${total}</td>`;
-            });
+            // Totals row
+            detailsHTML += '<tr class="bg-gray-200 font-semibold"><td class="border border-gray-300 p-1 text-center">Tot</td>';
+            
+            if (useNewFormat) {
+                // Totals for registered players
+                round.player_ids.forEach(playerId => {
+                    const username = round.player_usernames[playerId];
+                    const total = round.final_scores?.[username] || '-';
+                    detailsHTML += `<td class="border border-gray-300 p-1 text-center">${total}</td>`;
+                });
+                // Totals for guest players
+                if (round.guest_players && round.guest_players.length > 0) {
+                    round.guest_players.forEach(guestName => {
+                        const guestDisplayName = `${guestName} (Guest)`;
+                        const total = round.final_scores?.[guestDisplayName] || '-';
+                        detailsHTML += `<td class="border border-gray-300 p-1 text-center">${total}</td>`;
+                    });
+                }
+            } else {
+                displayPlayers.forEach(player => {
+                    const total = round.final_scores?.[player] || '-';
+                    detailsHTML += `<td class="border border-gray-300 p-1 text-center">${total}</td>`;
+                });
+            }
+            
             const totalPar = course.holes.reduce((a, b) => a + b, 0);
-            detailsHTML += `<td style="border: 1px solid #ddd; padding: 8px; text-align: center;">${totalPar}</td></tr>`;
-            detailsHTML += '</table>';
+            detailsHTML += `<td class="border border-gray-300 p-1 text-center font-bold text-indigo-600">${totalPar}</td></tr>`;
+            detailsHTML += '</tbody></table></div>';
         }
 
         detailsHTML += `
-                <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #dee2e6; text-align: center;">
-                    <div style="display: flex; gap: 10px; justify-content: center;">
-                        <button onclick="copyRoundToText('${roundId}')" 
-                                style="background: #28a745; color: white; border: none; padding: 10px 20px; border-radius: 8px; font-weight: 600; cursor: pointer;">
-                            📋 Copy Round
-                        </button>
-                        <button onclick="deleteRoundFromDetails('${roundId}')" 
-                                style="background: #dc3545; color: white; border: none; padding: 10px 20px; border-radius: 8px; font-weight: 600; cursor: pointer;">
-                            🗑️ Delete Round
-                        </button>
-                    </div>
+                <div class="mt-4 pt-4 border-t border-gray-200 flex flex-col sm:flex-row gap-2">
+                    <button onclick="copyRoundToText('${roundId}')" 
+                            class="flex-1 bg-green-600 hover:bg-green-700 text-white text-sm py-2 px-4 rounded-lg font-medium transition-colors duration-200">
+                        📋 Copy Round
+                    </button>
+                    <button onclick="deleteRoundFromDetails('${roundId}')" 
+                            class="flex-1 bg-red-600 hover:bg-red-700 text-white text-sm py-2 px-4 rounded-lg font-medium transition-colors duration-200">
+                        🗑️ Delete Round
+                    </button>
                 </div>
             </div>
         `;
 
         Swal.fire({
-            title: "Round Details",
+            title: "",
             html: detailsHTML,
-            width: '80%',
+            width: '95%',
+            maxWidth: '500px',
             showCloseButton: true,
-            showConfirmButton: false
+            showConfirmButton: false,
+            customClass: {
+                popup: 'text-left',
+                htmlContainer: 'px-2 py-0'
+            }
         });
 
     } catch (error) {
