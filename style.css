@@ -54,12 +54,43 @@ body {
     line-height: 1.5;
 }
 
-.user-info {
+.header-content {
+    position: relative;
+    text-align: center;
+    padding: 20px 0;
+}
+
+.user-info-header {
+    position: absolute;
+    top: 0;
+    left: 0;
     display: flex;
     align-items: center;
-    gap: 15px;
-    flex-wrap: wrap;
-    justify-content: center;
+    gap: 10px;
+    z-index: 10;
+}
+
+.user-info-header #user-name {
+    color: #495057;
+    font-weight: 600;
+    font-size: 16px;
+}
+
+
+.header-text {
+    margin: 0;
+}
+
+.header-text h1 {
+    font-size: 2.2em;
+    line-height: 1.2;
+    margin-bottom: 10px;
+}
+
+.header-text p {
+    color: #6c757d;
+    margin: 0;
+    font-size: 16px;
 }
 
 .user-avatar {
@@ -431,257 +462,6 @@ input:focus, select:focus, textarea:focus {
     flex-shrink: 0;
 }
 
-/* Mobile-specific improvements */
-@media (max-width: 768px) {
-    body {
-        padding: 5px;
-    }
-    
-    .container {
-        padding: 15px 10px;
-        border-radius: 15px;
-        margin: 0 5px;
-    }
-    
-    .login-card {
-        padding: 25px 15px;
-        margin: 0 5px;
-    }
-    
-    .login-header h1 {
-        font-size: 1.8em;
-    }
-    
-    .login-content h2 {
-        font-size: 1.3em;
-    }
-    
-    .header h1 {
-        font-size: 1.8em;
-    }
-    
-    .nav {
-        flex-direction: column;
-        gap: 8px;
-        padding: 8px;
-    }
-    
-    .nav-btn {
-        min-width: auto;
-        padding: 12px 15px;
-        font-size: 14px;
-        white-space: normal;
-        text-overflow: initial;
-        overflow: visible;
-    }
-    
-    .card {
-        padding: 15px 10px;
-        margin-bottom: 15px;
-    }
-    
-    .hole-row {
-        grid-template-columns: 45px 1fr;
-        gap: 8px;
-        padding: 10px;
-    }
-    
-    .hole-number {
-        padding: 6px 4px;
-        font-size: 12px;
-    }
-    
-    .score-input {
-        max-width: 60px;
-        padding: 6px;
-        font-size: 14px;
-    }
-    
-    .stat-grid {
-        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-        gap: 10px;
-    }
-    
-    .stat-card {
-        padding: 15px 10px;
-    }
-    
-    .stat-number {
-        font-size: 1.5em;
-    }
-    
-    .friend-list {
-        grid-template-columns: 1fr;
-        gap: 10px;
-    }
-    
-    .friend-card {
-        padding: 12px;
-    }
-    
-    .friend-card .btn {
-        font-size: 0.75em;
-        padding: 6px 10px;
-        margin: 2px 1px;
-    }
-    
-    .search-result-item {
-        flex-direction: column;
-        align-items: stretch;
-        gap: 8px;
-        padding: 10px;
-    }
-    
-    .search-result-item .btn {
-        align-self: center;
-        padding: 6px 15px;
-        font-size: 0.8em;
-    }
-    
-    .chart-placeholder {
-        height: 200px;
-        font-size: 14px;
-        padding: 15px;
-    }
-    
-    .progress-section {
-        padding: 15px 10px;
-    }
-    
-    .score-control {
-        gap: 6px;
-    }
-    
-    .score-decrease, .score-increase {
-        width: 32px;
-        height: 32px;
-        font-size: 16px;
-    }
-    
-    .score-display {
-        font-size: 14px;
-        padding: 6px 10px;
-        min-width: 40px;
-    }
-    
-    .user-info {
-        flex-direction: column;
-        gap: 10px;
-        text-align: center;
-    }
-    
-    .improvement-badge {
-        font-size: 11px;
-        padding: 3px 10px;
-    }
-}
-
-/* Extra small screens */
-@media (max-width: 480px) {
-    .container {
-        padding: 12px 8px;
-        margin: 0;
-        border-radius: 10px;
-    }
-    
-    .login-card {
-        padding: 20px 12px;
-        margin: 0;
-        border-radius: 15px;
-    }
-    
-    .nav {
-        padding: 6px;
-    }
-    
-    .nav-btn {
-        padding: 10px 8px;
-        font-size: 13px;
-    }
-    
-    .card {
-        padding: 12px 8px;
-    }
-    
-    .hole-row {
-        grid-template-columns: 40px 1fr;
-        gap: 6px;
-        padding: 8px;
-    }
-    
-    .hole-number {
-        padding: 4px 2px;
-        font-size: 11px;
-    }
-    
-    .score-input {
-        max-width: 50px;
-        padding: 4px;
-        font-size: 14px;
-    }
-    
-    .stat-grid {
-        grid-template-columns: 1fr 1fr;
-        gap: 8px;
-    }
-    
-    .stat-card {
-        padding: 12px 8px;
-    }
-    
-    .stat-number {
-        font-size: 1.3em;
-    }
-    
-    .friend-card {
-        padding: 10px;
-    }
-    
-    .friend-card h4 {
-        font-size: 14px;
-    }
-    
-    .friend-card .btn {
-        font-size: 0.7em;
-        padding: 5px 8px;
-    }
-    
-    .chart-placeholder {
-        height: 180px;
-        font-size: 13px;
-        padding: 10px;
-    }
-    
-    .score-decrease, .score-increase {
-        width: 28px;
-        height: 28px;
-        font-size: 14px;
-    }
-    
-    .score-display {
-        font-size: 13px;
-        padding: 5px 8px;
-        min-width: 35px;
-    }
-}
-
-/* Landscape orientation adjustments for mobile */
-@media (max-width: 768px) and (orientation: landscape) {
-    .nav {
-        flex-direction: row;
-        flex-wrap: wrap;
-    }
-    
-    .nav-btn {
-        flex: 1;
-        min-width: 80px;
-    }
-    
-    .stat-grid {
-        grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
-    }
-}
-
 /* Ensure text doesn't break badly */
 * {
     word-wrap: break-word;
@@ -691,20 +471,4 @@ input:focus, select:focus, textarea:focus {
 /* Prevent horizontal overflow */
 html, body {
     overflow-x: hidden;
-}
-
-/* Touch-friendly targets */
-@media (pointer: coarse) {
-    .btn, .nav-btn, .score-decrease, .score-increase {
-        min-height: 44px;
-        min-width: 44px;
-    }
-    
-    .score-input {
-        min-height: 44px;
-    }
-    
-    input, select, textarea {
-        min-height: 44px;
-    }
 }

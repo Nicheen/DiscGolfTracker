@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Disc Golf Tracker</title>
     <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="mobile_style.css">
     <script type="module" src="script.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 </head>
@@ -34,24 +35,24 @@
     <div id="main-app" class="container" style="display: none;">
         <header class="header">
             <div class="header-content">
-                <div>
-                    <h1>🥏 Disc Golf Tracker</h1>
-                    <p>Track your rounds, improve your game, connect with friends</p>
-                </div>
-                <div class="user-info">
+                <div class="user-info-header">
                     <img id="user-avatar" src="./images/user.png" alt="User" class="user-avatar">
                     <span id="user-name">Demo User</span>
+                </div>
+                <div class="header-text">
+                    <h1>🥏 Disc Golf Tracker</h1>
+                    <p>Track your rounds, improve your game, connect with friends</p>
                 </div>
             </div>
         </header>
         
 
         <nav class="nav">
-            <button class="nav-btn active" onclick="showSection('new-round')">New Round</button>
-            <button class="nav-btn" onclick="showSection('history')">History</button>
-            <button class="nav-btn" onclick="showSection('progress')">Progress</button>
-            <button class="nav-btn" onclick="showSection('friends')">Friends</button>
-            <button class="nav-btn" onclick="showSection('profile')">Profile</button>
+            <button class="nav-btn active" data-label="New Round" onclick="showSection('new-round')">🥏</button>
+            <button class="nav-btn" data-label="History" onclick="showSection('history')">📝</button>
+            <button class="nav-btn" data-label="Progress" onclick="showSection('progress')">📈</button>
+            <button class="nav-btn" data-label="Friends" onclick="showSection('friends')">👥</button>
+            <button class="nav-btn" data-label="Profile" onclick="showSection('profile')">👤</button>
         </nav>
 
         <!-- New Round Section -->
