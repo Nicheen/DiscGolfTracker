@@ -23,6 +23,68 @@ body {
     background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 }
+/* History item transitions */
+.history-item-content {
+    transition: all 0.3s ease-in-out;
+}
+
+/* Ensure proper overflow handling */
+[id^="history-content-"] {
+    transition: all 0.3s ease-in-out;
+}
+
+/* Button hover states */
+[id^="history-item-"] button:hover {
+    background-color: #f9fafb;
+}
+
+/* Mobile adjustments for history items */
+@media (max-width: 768px) {
+    [id^="history-item-"] .grid-cols-4 {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    
+    [id^="history-item-"] .flex.gap-2 {
+        flex-direction: column;
+        gap: 8px;
+    }
+    
+    [id^="history-item-"] .flex-1 {
+        flex: none;
+    }
+}
+
+/* Date group transitions */
+[id^="date-content-"] {
+    transition: all 0.3s ease-in-out;
+}
+
+[id^="round-content-"] {
+    transition: all 0.3s ease-in-out;
+}
+
+/* Hover states */
+[id^="date-group-"] button:hover {
+    background-color: #f9fafb;
+}
+
+/* Mobile adjustments for grouped history */
+@media (max-width: 768px) {
+    [id^="date-group-"] .flex.gap-6 {
+        flex-direction: column;
+        gap: 8px;
+        align-items: flex-start;
+    }
+    
+    [id^="date-group-"] .grid-cols-3 {
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+    }
+    
+    [id^="date-group-"] .text-sm {
+        font-size: 12px;
+    }
+}
 
 #new-round-content {
     max-height: 1000px;

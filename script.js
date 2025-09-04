@@ -18,7 +18,8 @@ let isNewRoundExpanded = true;
 let currentRound = null;
 let profilePictureCache = {};
 let coursesCacheTime = null;
-let pendingScoreUpdates = false;
+let openDateGroup = 0; // Only latest date open by default
+let expandedRoundItems = new Set();
 let saveTimeout;
 let searchTimeout;
 
@@ -199,18 +200,21 @@ async function loadCourses() {
                                 ${difficulty.text}
                             </span>
                         </div>
-                        <div class="flex items-center gap-4 text-sm text-gray-600">
+                        <div class="flex items-center gap-2 sm:gap-4 text-sm text-gray-600">
                             <span class="flex items-center gap-1">
                                 <span class="text-indigo-600">🕳️</span>
-                                ${course.holes.length} holes
+                                <span class="font-medium">${course.holes.length}</span>
+                                <span class="hidden sm:inline">holes</span>
                             </span>
                             <span class="flex items-center gap-1">
                                 <span class="text-green-600">⛳</span>
-                                Par ${totalPar}
+                                <span class="hidden sm:inline">Par</span>
+                                <span class="font-medium">${totalPar}</span>
                             </span>
                             <span class="flex items-center gap-1">
                                 <span class="text-orange-600">📏</span>
-                                ~${avgDistance}m avg
+                                <span class="font-medium">~${avgDistance}m</span>
+                                <span class="hidden sm:inline">avg</span>
                             </span>
                         </div>
                     </div>
@@ -233,6 +237,293 @@ async function loadCourses() {
             option.textContent = `${course.name} (${course.holes.length} holes)`;
             select.appendChild(option);
         });
+    }
+}
+
+function toggleDateGroup(dateIndex) {
+    const content = document.getElementById(`date-content-${dateIndex}`);
+    const chevron = document.getElementById(`date-chevron-${dateIndex}`);
+    
+    if (!content || !chevron) return;
+
+    // If clicking on already open group, close it
+    if (openDateGroup === dateIndex && !content.classList.contains('max-h-0')) {
+        content.classList.add('max-h-0');
+        content.style.maxHeight = '0px';
+        chevron.style.transform = 'rotate(0deg)';
+        openDateGroup = -1; // No group open
+        return;
+    }
+
+    // Close currently open group
+    if (openDateGroup !== -1) {
+        const currentContent = document.getElementById(`date-content-${openDateGroup}`);
+        const currentChevron = document.getElementById(`date-chevron-${openDateGroup}`);
+        if (currentContent && currentChevron) {
+            currentContent.classList.add('max-h-0');
+            currentContent.style.maxHeight = '0px';
+            currentChevron.style.transform = 'rotate(0deg)';
+        }
+    }
+
+    // Open clicked group
+    content.classList.remove('max-h-0');
+    content.style.maxHeight = '2000px'; // Large enough for content
+    chevron.style.transform = 'rotate(180deg)';
+    openDateGroup = dateIndex;
+}
+
+function toggleRoundItem(itemId) {
+    const content = document.getElementById(`round-content-${itemId}`);
+    const chevron = document.getElementById(`round-chevron-${itemId}`);
+    
+    if (!content || !chevron) return;
+    
+    // Get the round ID from the data attribute
+    const roundElement = content.closest('[data-round-id]');
+    const roundId = roundElement ? roundElement.getAttribute('data-round-id') : null;
+    
+    if (!roundId) {
+        console.error('Round ID not found');
+        return;
+    }
+    
+    const isExpanded = expandedRoundItems.has(itemId);
+    
+    if (isExpanded) {
+        // Collapse
+        content.style.maxHeight = '0px';
+        chevron.style.transform = 'rotate(0deg)';
+        expandedRoundItems.delete(itemId);
+    } else {
+        // Expand and load detailed scorecard
+        loadRoundScorecard(roundId, itemId);
+        content.style.maxHeight = '1000px'; // Large enough for scorecard
+        chevron.style.transform = 'rotate(180deg)';
+        expandedRoundItems.add(itemId);
+    }
+}
+
+// Function to load and display detailed hole-by-hole scorecard
+async function loadRoundScorecard(roundId, itemId) {
+    const content = document.getElementById(`round-content-${itemId}`);
+    if (!content) return;
+    
+    // Show loading state
+    content.innerHTML = `
+        <div class="p-4 text-center">
+            <div class="text-gray-500">Loading scorecard...</div>
+        </div>
+    `;
+    
+    try {
+        const { data: round, error } = await supabase
+            .from('rounds')
+            .select('*')
+            .eq('id', roundId)
+            .single();
+
+        if (error || !round) {
+            content.innerHTML = `
+                <div class="p-4 text-center text-red-500">
+                    Error loading scorecard details
+                </div>
+            `;
+            return;
+        }
+
+        // Find course to get par info
+        const course = coursesData.find(c => c.id == round.course_id);
+        
+        if (!course) {
+            content.innerHTML = `
+                <div class="p-4 text-center text-red-500">
+                    Course data not found
+                </div>
+            `;
+            return;
+        }
+        
+        // Determine which format to use
+        const useNewFormat = round.player_ids && round.player_usernames && round.scores;
+        let displayPlayers = [];
+        
+        if (useNewFormat) {
+            displayPlayers = round.player_ids.map(id => round.player_usernames[id] || `User_${id.substring(0, 8)}`);
+            // Add guest players if they exist
+            if (round.guest_players && round.guest_players.length > 0) {
+                displayPlayers = [...displayPlayers, ...round.guest_players.map(name => `${name} (Guest)`)];
+            }
+        } else {
+            displayPlayers = round.players;
+        }
+
+        // Convert to Date objects for duration calculation
+        const start = new Date(round.created_at);
+        const end = new Date(round.updated_at);
+        const diffMs = end - start;
+        const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+        const diffMinutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+
+        // Build the detailed scorecard HTML
+        let scorecardHTML = `
+            <div class="p-4 bg-gray-50">
+                <!-- Round Info Header -->
+                <div class="mb-4 pb-3 border-b border-gray-300">
+                    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                        <div>
+                            <h4 class="font-bold text-gray-800 text-lg">${round.course_name}</h4>
+                            <p class="text-sm text-gray-600">
+                                ${round.date} • Duration: ${diffHours}h ${diffMinutes}m
+                            </p>
+                        </div>
+                        <div class="text-sm text-gray-600">
+                            ${displayPlayers.length} players
+                        </div>
+                    </div>
+                </div>
+                
+                <h5 class="font-semibold text-gray-800 mb-3 text-sm">Hole-by-hole scorecard:</h5>
+                
+                <div class="overflow-x-auto mb-4 border border-gray-300 rounded-lg">
+                    <table class="min-w-full text-xs border-collapse bg-white">
+                        <thead>
+                            <tr class="bg-gray-200">
+                                <th class="border border-gray-300 p-2 text-center font-semibold sticky left-0 bg-gray-200 z-10">Hole</th>
+        `;
+
+        // Add player headers (abbreviated for mobile)
+        displayPlayers.forEach(player => {
+            const shortName = player.length > 8 ? player.substring(0, 8) + '.' : player;
+            scorecardHTML += `<th class="border border-gray-300 p-2 text-center font-semibold min-w-[50px]" title="${player}">${shortName}</th>`;
+        });
+        scorecardHTML += `<th class="border border-gray-300 p-2 text-center font-semibold bg-blue-100">Par</th></tr></thead><tbody>`;
+
+        // Add hole rows
+        for (let i = 0; i < course.holes.length; i++) {
+            const holeClass = i % 2 === 0 ? 'bg-white' : 'bg-gray-50';
+            scorecardHTML += `<tr class="${holeClass} hover:bg-blue-50"><td class="border border-gray-300 p-2 text-center font-semibold sticky left-0 ${holeClass} z-10">${i + 1}</td>`;
+            
+            if (useNewFormat) {
+                // Registered players
+                round.player_ids.forEach(playerId => {
+                    const score = round.scores[playerId]?.[i] || '-';
+                    const par = course.holes[i];
+                    const scoreDiff = score !== '-' ? score - par : 0;
+                    const cellClass = score !== '-' ? 
+                        (scoreDiff < 0 ? 'text-green-600 font-bold' : 
+                         scoreDiff > 0 ? 'text-red-600 font-bold' : 
+                         'text-gray-800') : 'text-gray-400';
+                    scorecardHTML += `<td class="border border-gray-300 p-2 text-center ${cellClass}">${score}</td>`;
+                });
+                // Guest players
+                if (round.guest_players && round.guest_players.length > 0) {
+                    round.guest_players.forEach(guestName => {
+                        const guestId = `guest_${guestName.replace(/\s+/g, '_').toLowerCase()}`;
+                        const score = round.scores[guestId]?.[i] || '-';
+                        const par = course.holes[i];
+                        const scoreDiff = score !== '-' ? score - par : 0;
+                        const cellClass = score !== '-' ? 
+                            (scoreDiff < 0 ? 'text-green-600 font-bold' : 
+                             scoreDiff > 0 ? 'text-red-600 font-bold' : 
+                             'text-gray-800') : 'text-gray-400';
+                        scorecardHTML += `<td class="border border-gray-300 p-2 text-center ${cellClass}">${score}</td>`;
+                    });
+                }
+            } else {
+                displayPlayers.forEach(player => {
+                    let score = '-';
+                    if (player.includes('(Guest)')) {
+                        const baseName = player.replace(' (Guest)', '');
+                        const guestId = `guest_${baseName.replace(/\s+/g, '_').toLowerCase()}`;
+                        score = round.scores[guestId]?.[i] || '-';
+                    } else {
+                        score = round.scores[player]?.[i] || '-';
+                    }
+                    const par = course.holes[i];
+                    const scoreDiff = score !== '-' ? score - par : 0;
+                    const cellClass = score !== '-' ? 
+                        (scoreDiff < 0 ? 'text-green-600 font-bold' : 
+                         scoreDiff > 0 ? 'text-red-600 font-bold' : 
+                         'text-gray-800') : 'text-gray-400';
+                    scorecardHTML += `<td class="border border-gray-300 p-2 text-center ${cellClass}">${score}</td>`;
+                });
+            }
+            
+            scorecardHTML += `<td class="border border-gray-300 p-2 text-center font-bold text-blue-600 bg-blue-50">${course.holes[i]}</td></tr>`;
+        }
+
+        // Totals row
+        scorecardHTML += '<tr class="bg-gray-300 font-bold border-t-2 border-gray-400"><td class="border border-gray-300 p-2 text-center sticky left-0 bg-gray-300 z-10">Total</td>';
+        
+        if (useNewFormat) {
+            // Totals for registered players
+            round.player_ids.forEach(playerId => {
+                const username = round.player_usernames[playerId];
+                const total = round.final_scores?.[username] || '-';
+                const totalPar = course.holes.reduce((a, b) => a + b, 0);
+                const totalDiff = total !== '-' ? total - totalPar : 0;
+                const cellClass = total !== '-' ? 
+                    (totalDiff < 0 ? 'text-green-600' : 
+                     totalDiff > 0 ? 'text-red-600' : 
+                     'text-gray-800') : 'text-gray-400';
+                scorecardHTML += `<td class="border border-gray-300 p-2 text-center ${cellClass}">${total}</td>`;
+            });
+            // Totals for guest players
+            if (round.guest_players && round.guest_players.length > 0) {
+                round.guest_players.forEach(guestName => {
+                    const guestDisplayName = `${guestName} (Guest)`;
+                    const total = round.final_scores?.[guestDisplayName] || '-';
+                    const totalPar = course.holes.reduce((a, b) => a + b, 0);
+                    const totalDiff = total !== '-' ? total - totalPar : 0;
+                    const cellClass = total !== '-' ? 
+                        (totalDiff < 0 ? 'text-green-600' : 
+                         totalDiff > 0 ? 'text-red-600' : 
+                         'text-gray-800') : 'text-gray-400';
+                    scorecardHTML += `<td class="border border-gray-300 p-2 text-center ${cellClass}">${total}</td>`;
+                });
+            }
+        } else {
+            displayPlayers.forEach(player => {
+                const total = round.final_scores?.[player] || '-';
+                const totalPar = course.holes.reduce((a, b) => a + b, 0);
+                const totalDiff = total !== '-' ? total - totalPar : 0;
+                const cellClass = total !== '-' ? 
+                    (totalDiff < 0 ? 'text-green-600' : 
+                     totalDiff > 0 ? 'text-red-600' : 
+                     'text-gray-800') : 'text-gray-400';
+                scorecardHTML += `<td class="border border-gray-300 p-2 text-center ${cellClass}">${total}</td>`;
+            });
+        }
+        
+        const totalPar = course.holes.reduce((a, b) => a + b, 0);
+        scorecardHTML += `<td class="border border-gray-300 p-2 text-center font-bold text-blue-600 bg-blue-100">${totalPar}</td></tr>`;
+        scorecardHTML += '</tbody></table></div>';
+
+        // Action buttons
+        scorecardHTML += `
+                <div class="flex flex-col sm:flex-row gap-2 pt-3 border-t border-gray-300">
+                    <button onclick="event.stopPropagation(); copyRoundToText('${round.id}')" 
+                            class="flex-1 bg-green-600 hover:bg-green-700 text-white text-sm py-2 px-4 rounded-lg font-medium transition-colors duration-200">
+                        📋 Copy Round Data
+                    </button>
+                    <button onclick="event.stopPropagation(); deleteRound('${round.id}')" 
+                            class="bg-red-600 hover:bg-red-700 text-white text-sm py-2 px-4 rounded-lg font-medium transition-colors duration-200">
+                        🗑️ Delete Round
+                    </button>
+                </div>
+            </div>
+        `;
+
+        content.innerHTML = scorecardHTML;
+
+    } catch (error) {
+        console.error('Error loading round scorecard:', error);
+        content.innerHTML = `
+            <div class="p-4 text-center text-red-500">
+                Failed to load scorecard details
+            </div>
+        `;
     }
 }
 
@@ -1823,7 +2114,7 @@ async function loadHistory() {
         }
 
         container.innerHTML = '';
-        container.className = 'space-y-4';
+        container.className = 'space-y-3';
 
         if (!rounds || rounds.length === 0) {
             container.innerHTML = '<div class="text-center text-gray-500 py-12">No rounds completed yet. Finish your first round!</div>';
@@ -1839,96 +2130,207 @@ async function loadHistory() {
 
         const currentUsername = profile?.username;
 
+        // Group rounds by date
+        const roundsByDate = {};
         rounds.forEach(round => {
-            // Find course data for par calculation
-            const course = coursesData.find(c => c.id == round.course_id);
-            const par = course ? course.holes.reduce((a, b) => a + b, 0) : 0;
+            const date = round.date;
+            if (!roundsByDate[date]) {
+                roundsByDate[date] = [];
+            }
+            roundsByDate[date].push(round);
+        });
+
+        // Get sorted dates (most recent first)
+        const sortedDates = Object.keys(roundsByDate).sort((a, b) => new Date(b) - new Date(a));
+        
+        // Create date groups
+        sortedDates.forEach((date, dateIndex) => {
+            const roundsForDate = roundsByDate[date];
+            const isLatestDate = dateIndex === 0; // Only latest date is open by default
             
-            // Get current user's score - check both formats
-            let yourScore = 0;
-            if (round.final_scores_by_id && round.final_scores_by_id[user.id]) {
-                yourScore = round.final_scores_by_id[user.id];
-            } else if (round.final_scores && currentUsername && round.final_scores[currentUsername]) {
-                yourScore = round.final_scores[currentUsername];
+            // Create date group container
+            const dateGroup = document.createElement('div');
+            dateGroup.className = 'bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden';
+            dateGroup.id = `date-group-${dateIndex}`;
+
+            // Calculate date stats
+            const totalRoundsForDate = roundsForDate.length;
+            const scoresForDate = roundsForDate
+                .map(round => {
+                    if (round.final_scores && currentUsername && round.final_scores[currentUsername] != null) {
+                        return round.final_scores[currentUsername];
+                    }
+                    return null;
+                })
+                .filter(score => score !== null);
+            
+            const avgScoreForDate = scoresForDate.length > 0 ? 
+                (scoresForDate.reduce((a, b) => a + b, 0) / scoresForDate.length).toFixed(1) : '-';
+            const bestScoreForDate = scoresForDate.length > 0 ? Math.min(...scoresForDate) : '-';
+
+            // Format date for display
+            const dateObj = new Date(date + 'T00:00:00');
+            const today = new Date();
+            const yesterday = new Date(today);
+            yesterday.setDate(yesterday.getDate() - 1);
+            
+            let displayDate;
+            if (dateObj.toDateString() === today.toDateString()) {
+                displayDate = 'Today';
+            } else if (dateObj.toDateString() === yesterday.toDateString()) {
+                displayDate = 'Yesterday';
+            } else {
+                displayDate = dateObj.toLocaleDateString('en-US', { 
+                    weekday: 'long', 
+                    year: 'numeric', 
+                    month: 'long', 
+                    day: 'numeric' 
+                });
             }
 
-            // Calculate score difference text
-            const scoreDiff = yourScore > 0 && par > 0 ? yourScore - par : null;
-            const scoreDiffText = scoreDiff === null ? '' : 
-                scoreDiff > 0 ? `+${scoreDiff}` : 
-                scoreDiff === 0 ? 'E' : 
-                scoreDiff.toString();
-
-            // Display player scores - handle both registered users and guests
-            let topPlayers = [];
-            if (round.player_usernames && round.final_scores_by_id) {
-                topPlayers = Object.entries(round.final_scores_by_id)
-                    .map(([playerId, score]) => ({
-                        name: round.player_usernames[playerId] || (playerId.startsWith('guest_') ? 'Guest Player' : 'Unknown'),
-                        score: score
-                    }))
-                    .sort((a, b) => a.score - b.score)
-                    .slice(0, 3);
-            } else if (round.final_scores) {
-                topPlayers = Object.entries(round.final_scores)
-                    .map(([player, score]) => ({ name: player, score: score }))
-                    .sort((a, b) => a.score - b.score)
-                    .slice(0, 3);
-            }
-
-            const item = document.createElement('div');
-            item.className = 'bg-white rounded-xl shadow-md hover:shadow-lg border border-gray-200 cursor-pointer transition-all duration-200 hover:border-indigo-300 overflow-hidden';
-            item.onclick = () => viewRoundDetails(round.id);
-
-            item.innerHTML = `
-                <div class="p-6">
-                    <div class="flex justify-between items-start mb-4">
-                        <div>
-                            <h3 class="text-xl font-bold text-gray-900 mb-1">${round.course_name}</h3>
-                            <p class="text-sm text-gray-500">${round.date}</p>
-                        </div>
-                        <div class="text-right">
-                            <div class="text-2xl font-bold text-indigo-600">${yourScore || '-'}</div>
-                            ${scoreDiffText ? `<div class="text-sm font-medium ${scoreDiff > 0 ? 'text-red-500' : scoreDiff < 0 ? 'text-green-500' : 'text-gray-600'}">${scoreDiffText}</div>` : ''}
-                        </div>
-                    </div>
-                    
-                    <div class="mb-4">
-                        <p class="text-sm text-gray-600 mb-2">Players: ${round.players.join(', ')}
-                    </div>
-                    
-                    ${topPlayers.length > 0 ? `
-                        <div class="border-t pt-4">
-                            <p class="text-sm font-medium text-gray-700 mb-2">Leaderboard (course par ${par}):</p>
-                            <div class="flex flex-wrap gap-2">
-                                ${topPlayers.map((player, index) => {
-                                    const scoreToPar = player.score - par;
-                                    const scoreToParText = scoreToPar === 0 ? 'E' : 
-                                                        scoreToPar > 0 ? `+${scoreToPar}` : 
-                                                        scoreToPar.toString();
-                                    
-                                    return `
-                                        <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${
-                                            index === 0 ? 'bg-yellow-100 text-yellow-800' : 
-                                            index === 1 ? 'bg-gray-100 text-gray-800' : 
-                                            'bg-orange-100 text-orange-800'
-                                        }">
-                                            ${index + 1}. ${player.name}: ${scoreToParText}
-                                        </span>
-                                    `;
-                                }).join('')}
+            dateGroup.innerHTML = `
+                <!-- Date Header -->
+                <button onclick="toggleDateGroup(${dateIndex})" 
+                        class="w-full p-4 text-left hover:bg-gray-50 transition-colors duration-200 focus:outline-none">
+                    <div class="flex justify-between items-center">
+                        <div class="flex-1">
+                            <div class="flex items-center justify-between mb-2">
+                                <div class="flex items-baseline gap-2">
+                                    <h3 class="text-lg font-bold text-gray-900">${displayDate}</h3>
+                                    <span class="text-sm text-gray-400">${date}</span>
+                                </div>
+                                <div class="text-sm text-gray-600 font-medium">
+                                    ${totalRoundsForDate} round${totalRoundsForDate !== 1 ? 's' : ''}
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-6 text-sm text-gray-600">
+                                <span>Avg: <strong class="text-indigo-600">${avgScoreForDate}</strong> │ Best: <strong class="text-green-600">${bestScoreForDate}</strong></span>
                             </div>
                         </div>
-                    ` : ''}
+                        <div id="date-chevron-${dateIndex}" class="ml-4 transform transition-transform duration-300 ${isLatestDate ? 'rotate-180' : ''}">
+                            <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                            </svg>
+                        </div>
+                    </div>
+                </button>
+
+                <!-- Rounds Content -->
+                <div id="date-content-${dateIndex}" class="border-t border-gray-200 transition-all duration-300 ease-in-out overflow-hidden ${isLatestDate ? '' : 'max-h-0'}">
+                    <div class="p-2">
+                        ${roundsForDate.map((round, roundIndex) => createRoundItem(round, `${dateIndex}-${roundIndex}`, currentUsername, user.id)).join('')}
+                    </div>
                 </div>
             `;
 
-            container.appendChild(item);
+            container.appendChild(dateGroup);
         });
+
     } catch (error) {
         console.error('Error loading history:', error);
         container.innerHTML = '<div class="text-center text-red-500">Error loading history</div>';
     }
+}
+
+function createRoundItem(round, itemId, currentUsername, userId) {
+    // Find course data for par calculation
+    const course = coursesData.find(c => c.id == round.course_id);
+    const par = course ? course.holes.reduce((a, b) => a + b, 0) : 0;
+    
+    // Get current user's score
+    let yourScore = 0;
+    if (round.final_scores_by_id && round.final_scores_by_id[userId]) {
+        yourScore = round.final_scores_by_id[userId];
+    } else if (round.final_scores && currentUsername && round.final_scores[currentUsername]) {
+        yourScore = round.final_scores[currentUsername];
+    }
+
+    // Calculate score difference text
+    const scoreDiff = yourScore > 0 && par > 0 ? yourScore - par : null;
+    const scoreDiffText = scoreDiff === null ? '' : 
+        scoreDiff > 0 ? `+${scoreDiff}` : 
+        scoreDiff === 0 ? 'E' : 
+        scoreDiff.toString();
+
+    // Get top players
+    let topPlayers = [];
+    if (round.player_usernames && round.final_scores_by_id) {
+        topPlayers = Object.entries(round.final_scores_by_id)
+            .map(([playerId, score]) => ({
+                name: round.player_usernames[playerId] || (playerId.startsWith('guest_') ? 'Guest Player' : 'Unknown'),
+                score: score
+            }))
+            .sort((a, b) => a.score - b.score)
+            .slice(0, 3);
+    } else if (round.final_scores) {
+        topPlayers = Object.entries(round.final_scores)
+            .map(([player, score]) => ({ name: player, score: score }))
+            .sort((a, b) => a.score - b.score)
+            .slice(0, 3);
+    }
+
+    return `
+        <div class="bg-white rounded-xl shadow-md hover:shadow-lg border border-gray-200 cursor-pointer transition-all duration-200 hover:border-indigo-300 overflow-hidden m-3" 
+            onclick="toggleRoundItem('${itemId}')" data-round-id="${round.id}">
+            
+            <!-- Rest of your existing code stays the same -->
+            <div class="p-6">
+                <div class="flex justify-between items-start mb-4">
+                    <div>
+                        <h3 class="text-xl font-bold text-gray-900 mb-1">${round.course_name}</h3>
+                        <p class="text-sm text-gray-500">${round.date}</p>
+                    </div>
+                    <div class="text-right">
+                        <div class="text-2xl font-bold text-indigo-600">${yourScore || '-'}</div>
+                        ${scoreDiffText ? `<div class="text-sm font-medium ${scoreDiff > 0 ? 'text-red-500' : scoreDiff < 0 ? 'text-green-500' : 'text-gray-600'}">${scoreDiffText}</div>` : ''}
+                    </div>
+                </div>
+                
+                <div class="mb-4">
+                    <p class="text-sm text-gray-600 mb-2">Players: ${round.players.join(', ')}</p>
+                </div>
+                
+                ${topPlayers.length > 0 ? `
+                    <div class="border-t pt-4">
+                        <p class="text-sm font-medium text-gray-700 mb-2">Leaderboard (course par ${par}):</p>
+                        <div class="flex flex-wrap gap-2">
+                            ${topPlayers.map((player, index) => {
+                                const playerScoreToPar = player.score - par;
+                                const playerScoreToParText = playerScoreToPar === 0 ? 'E' : 
+                                                            playerScoreToPar > 0 ? `+${playerScoreToPar}` : 
+                                                            playerScoreToPar.toString();
+                                
+                                return `
+                                    <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${
+                                        index === 0 ? 'bg-yellow-100 text-yellow-800' : 
+                                        index === 1 ? 'bg-gray-100 text-gray-800' : 
+                                        'bg-orange-100 text-orange-800'
+                                    }">
+                                        ${index + 1}. ${player.name}: ${playerScoreToParText}
+                                    </span>
+                                `;
+                            }).join('')}
+                        </div>
+                    </div>
+                ` : ''}
+            </div>
+
+            <!-- Expandable Section for Hole-by-Hole Scorecard -->
+            <div id="round-content-${itemId}" class="border-t border-gray-200 transition-all duration-300 ease-in-out overflow-hidden max-h-0">
+                <!-- Content will be loaded here when expanded -->
+            </div>
+
+            <!-- Expand Indicator -->
+            <div class="bg-gray-100 px-4 py-2 text-center border-t border-gray-200">
+                <div id="round-chevron-${itemId}" class="transform transition-transform duration-300 inline-block">
+                    <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                    </svg>
+                </div>
+                <span class="text-xs text-gray-500 ml-2">Click to view hole-by-hole scorecard</span>
+            </div>
+        </div>
+    `;
 }
 
 async function updateProgress() {
@@ -2932,6 +3334,9 @@ window.removeFriend = removeFriend;
 window.addFriendToRound = addFriendToRound;
 window.showFriendDetails = showFriendDetails;
 window.loadFriends = loadFriends;
+window.toggleDateGroup = toggleDateGroup;
+window.toggleRoundItem = toggleRoundItem;
+window.loadRoundScorecard = loadRoundScorecard;
 
 window.startRound = startRound;
 window.updateScore = updateScore;
