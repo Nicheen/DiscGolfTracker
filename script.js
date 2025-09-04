@@ -556,12 +556,41 @@ function clearSearchResults() {
 }
 
 function showSection(sectionId) {
-    document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-    document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+    // Hide all sections
+    document.querySelectorAll('.section').forEach(s => {
+        s.classList.remove('active');
+        s.classList.add('hidden');
+    });
     
-    document.getElementById(sectionId).classList.add('active');
-    event.target.classList.add('active');
+    // Show selected section
+    const targetSection = document.getElementById(sectionId);
+    if (targetSection) {
+        targetSection.classList.add('active');
+        targetSection.classList.remove('hidden');
+    }
     
+    // Update navigation button states
+    document.querySelectorAll('.nav-btn').forEach(btn => {
+        btn.classList.remove('bg-indigo-600', 'text-white');
+        btn.classList.add('text-gray-600', 'hover:text-indigo-600', 'hover:bg-indigo-50');
+    });
+    
+    // Find and activate the correct button
+    const buttons = document.querySelectorAll('.nav-btn');
+    buttons.forEach(btn => {
+        const buttonText = btn.querySelector('span:last-child').textContent.toLowerCase();
+        if ((sectionId === 'new-round' && buttonText === 'round') ||
+            (sectionId === 'history' && buttonText === 'history') ||
+            (sectionId === 'progress' && buttonText === 'progress') ||
+            (sectionId === 'friends' && buttonText === 'friends') ||
+            (sectionId === 'profile' && buttonText === 'profile')) {
+            
+            btn.classList.remove('text-gray-600', 'hover:text-indigo-600', 'hover:bg-indigo-50');
+            btn.classList.add('bg-indigo-600', 'text-white');
+        }
+    });
+    
+    // Load data for specific sections
     if (sectionId === 'history') loadHistory();
     if (sectionId === 'progress') updateProgress();
     if (sectionId === 'friends') loadFriends();
@@ -837,6 +866,56 @@ async function updateHoleDisplay(course, players, holeIndex) {
     });
 }
 
+async function deleteCurrentRound() {
+    if (!currentRound) return;
+
+    const result = await Swal.fire({
+        title: 'Delete Current Round?',
+        text: 'Are you sure you want to delete this scorecard? All scores will be lost and this action cannot be undone!',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#dc3545',
+        cancelButtonColor: '#6c757d',
+        confirmButtonText: 'Yes, delete it!',
+        cancelButtonText: 'Cancel'
+    });
+
+    if (result.isConfirmed) {
+        try {
+            const { error } = await supabase
+                .from('rounds')
+                .delete()
+                .eq('id', currentRound.id);
+
+            if (error) {
+                throw error;
+            }
+
+            // Clear current round and hide scorecard
+            currentRound = null;
+            document.getElementById('scorecard').style.display = 'none';
+            document.getElementById('course').value = '';
+            document.getElementById('players').value = '';
+
+            Swal.fire({
+                title: "Round Deleted!",
+                text: 'The scorecard has been deleted successfully.',
+                icon: "success",
+                timer: 2000,
+                showConfirmButton: false
+            });
+
+        } catch (error) {
+            console.error('Error deleting current round:', error);
+            Swal.fire({
+                icon: "error",
+                title: "Error",
+                text: 'Failed to delete round. Please try again.',
+            });
+        }
+    }
+}
+
 // Helper function to get player profile picture
 async function getPlayerProfilePicture(playerName) {
     // Check cache first
@@ -1068,12 +1147,14 @@ async function finishRound() {
         Swal.fire({
             title: "Round Completed!",
             text: 'Your round has been saved successfully.',
-            icon: "success"
+            icon: "success",
+            timer: 3000,
+            showConfirmButton: false
         });
         
         document.getElementById('scorecard').style.display = 'none';
         document.getElementById('course').value = '';
-        document.getElementById('players').value = '';
+        document.getElementById('players').value = 'You';
         
         // Refresh history if we're on that tab
         const historySection = document.getElementById('history');
@@ -1294,6 +1375,12 @@ async function loadCurrentRound() {
         }
 
         if (inProgressRound) {
+            // Double-check that the round is actually in progress and not completed
+            if (inProgressRound.status !== 'in_progress') {
+                console.log('Round found but status is not in_progress, skipping...');
+                return;
+            }
+
             // Restore the current round
             const course = coursesData.find(c => c.id == inProgressRound.course_id);
             if (course) {
@@ -1331,6 +1418,10 @@ async function loadCurrentRound() {
                     timer: 3000
                 });
             }
+        } else {
+            // Ensure scorecard is hidden if no active round
+            document.getElementById('scorecard').style.display = 'none';
+            currentRound = null;
         }
     } catch (error) {
         console.error('Error loading current round:', error);
@@ -1681,6 +1772,7 @@ window.updateProgress = updateProgress;
 window.loadHistory = loadHistory;
 window.changeHole = changeHole;
 window.goToHole = goToHole;
+window.deleteCurrentRound = deleteCurrentRound;
 
 // Run on page load
 window.addEventListener("DOMContentLoaded", async () => {
@@ -1691,7 +1783,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     await loadProfile();
     await loadCourses();
     await loadCurrentRound();
-    await showSection('new-round')
+    showSection('new-round')
   } else {
     console.log("User is not logged in");
   }

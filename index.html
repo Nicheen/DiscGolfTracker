@@ -77,9 +77,14 @@
                         Scorecard - <span id="current-course" class="text-indigo-600"></span>
                     </h3>
                     <div id="scorecard-content" class="overflow-x-auto"></div>
-                    <button onclick="finishRound()" class="w-full mt-6 bg-green-600 text-white py-3 px-6 rounded-lg font-semibold hover:bg-green-700 transition-colors duration-200">
+                    <div class="flex gap-3 mt-6">
+                    <button onclick="finishRound()" class="flex-1 bg-green-600 text-white py-3 px-6 rounded-lg font-semibold hover:bg-green-700 transition-colors duration-200">
                         Finish Round
                     </button>
+                    <button onclick="deleteCurrentRound()" class="bg-red-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-red-700 transition-colors duration-200 text-sm">
+                        🗑️
+                    </button>
+                </div>
                 </div>
             </div>
 
