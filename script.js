@@ -14,12 +14,76 @@ const COURSES_CACHE_DURATION = 10 * 60 * 1000; // 10 minutes
 
 let selectedProfilePicture = null;
 let coursesData = [];
+let isNewRoundExpanded = true;
 let currentRound = null;
 let profilePictureCache = {};
 let coursesCacheTime = null;
 let pendingScoreUpdates = false;
 let saveTimeout;
 let searchTimeout;
+
+function toggleNewRoundSection() {
+    const content = document.getElementById('new-round-content');
+    const chevron = document.getElementById('new-round-chevron');
+    const toggle = document.getElementById('new-round-toggle');
+    
+    if (isNewRoundExpanded) {
+        // Collapse
+        content.style.maxHeight = '0px';
+        content.style.paddingTop = '0';
+        content.style.paddingBottom = '0';
+        chevron.style.transform = 'rotate(-90deg)';
+        toggle.querySelector('p').textContent = 'Click to expand and start a new round';
+        isNewRoundExpanded = false;
+        
+        // Store state in localStorage
+        localStorage.setItem('newRoundExpanded', 'false');
+    } else {
+        // Expand
+        content.style.maxHeight = '1000px'; // Large enough to accommodate content
+        content.style.paddingTop = '';
+        content.style.paddingBottom = '';
+        chevron.style.transform = 'rotate(0deg)';
+        toggle.querySelector('p').textContent = 'Choose course and players to begin';
+        isNewRoundExpanded = true;
+        
+        // Store state in localStorage
+        localStorage.setItem('newRoundExpanded', 'true');
+    }
+}
+
+// Function to auto-collapse when round starts
+function autoCollapseNewRound() {
+    if (isNewRoundExpanded) {
+        toggleNewRoundSection();
+    }
+}
+
+// Function to restore collapse state on page load
+function restoreNewRoundState() {
+    const savedState = localStorage.getItem('newRoundExpanded');
+    if (savedState === 'false') {
+        // Set initial state without animation
+        const content = document.getElementById('new-round-content');
+        const chevron = document.getElementById('new-round-chevron');
+        const toggle = document.getElementById('new-round-toggle');
+        
+        if (content && chevron && toggle) {
+            content.style.maxHeight = '0px';
+            content.style.paddingTop = '0';
+            content.style.paddingBottom = '0';
+            content.style.transition = 'none'; // Disable transition for initial load
+            chevron.style.transform = 'rotate(-90deg)';
+            toggle.querySelector('p').textContent = 'Click to expand and start a new round';
+            isNewRoundExpanded = false;
+            
+            // Re-enable transition after a short delay
+            setTimeout(() => {
+                content.style.transition = 'all 0.3s ease-in-out';
+            }, 100);
+        }
+    }
+}
 
 async function signUp() {
     const email = document.getElementById("login-email").value;
@@ -112,9 +176,57 @@ async function loadCourses() {
 
     coursesCacheTime = Date.now();
 
-    // Only update UI if select exists
-    const select = document.getElementById("course");
-    if (select && select.children.length <= 1) { // Only default option
+    // Update the course selection UI
+    const courseSelection = document.getElementById("course-selection");
+    if (courseSelection) {
+        courseSelection.innerHTML = '';
+        
+        coursesData.forEach(course => {
+            const totalPar = course.holes.reduce((a, b) => a + b, 0);
+            const avgDistance = Math.round(course.distances.reduce((a, b) => a + b, 0) / course.distances.length);
+            const difficulty = getDifficultyLevel(course.name, totalPar, course.holes.length);
+            
+            const courseCard = document.createElement('div');
+            courseCard.className = 'course-card p-4 border-2 border-gray-200 rounded-xl cursor-pointer transition-all duration-200 hover:border-indigo-400 hover:shadow-lg hover:-translate-y-1';
+            courseCard.onclick = () => selectCourse(course.id, courseCard);
+            
+            courseCard.innerHTML = `
+                <div class="flex items-center justify-between">
+                    <div class="flex-1">
+                        <div class="flex items-center gap-2 mb-1">
+                            <h3 class="font-bold text-gray-800 text-lg">${course.name}</h3>
+                            <span class="difficulty-badge px-2 py-1 rounded-full text-xs font-semibold ${difficulty.class}">
+                                ${difficulty.text}
+                            </span>
+                        </div>
+                        <div class="flex items-center gap-4 text-sm text-gray-600">
+                            <span class="flex items-center gap-1">
+                                <span class="text-indigo-600">🕳️</span>
+                                ${course.holes.length} holes
+                            </span>
+                            <span class="flex items-center gap-1">
+                                <span class="text-green-600">⛳</span>
+                                Par ${totalPar}
+                            </span>
+                            <span class="flex items-center gap-1">
+                                <span class="text-orange-600">📏</span>
+                                ~${avgDistance}m avg
+                            </span>
+                        </div>
+                    </div>
+                    <div class="text-2xl ml-4">
+                        ${getCourseEmoji(course.name)}
+                    </div>
+                </div>
+            `;
+            
+            courseSelection.appendChild(courseCard);
+        });
+    }
+
+    // Also update the old select element if it still exists (for compatibility)
+    const select = document.getElementById("course-select");
+    if (select && select.children.length <= 1) {
         coursesData.forEach(course => {
             const option = document.createElement("option");
             option.value = course.id;
@@ -122,6 +234,50 @@ async function loadCourses() {
             select.appendChild(option);
         });
     }
+}
+
+// Helper function to determine difficulty
+function getDifficultyLevel(name, par, holes) {
+    const avgPar = par / holes;
+    const namePattern = name.toLowerCase();
+    
+    if (namePattern.includes('easy') || avgPar < 3.2) {
+        return { class: 'bg-green-100 text-green-700', text: 'Easy' };
+    } else if (namePattern.includes('hard') || namePattern.includes('championship') || avgPar > 3.6) {
+        return { class: 'bg-red-100 text-red-700', text: 'Hard' };
+    } else {
+        return { class: 'bg-blue-100 text-blue-700', text: 'Medium' };
+    }
+}
+
+// Helper function to get course emoji
+function getCourseEmoji(name) {
+    const namePattern = name.toLowerCase();
+    if (namePattern.includes('forest') || namePattern.includes('wood')) return '🌲';
+    if (namePattern.includes('park')) return '🏞️';
+    if (namePattern.includes('lake') || namePattern.includes('water')) return '🏞️';
+    if (namePattern.includes('mountain') || namePattern.includes('hill')) return '⛰️';
+    if (namePattern.includes('easy')) return '🟢';
+    if (namePattern.includes('hard') || namePattern.includes('championship')) return '🔴';
+    return '🥏';
+}
+
+// Function to handle course selection
+function selectCourse(courseId, cardElement) {
+    // Remove selection from all cards
+    document.querySelectorAll('.course-card').forEach(card => {
+        card.classList.remove('border-indigo-600', 'bg-indigo-50', 'selected-course');
+        card.classList.add('border-gray-200');
+    });
+    
+    // Add selection to clicked card
+    cardElement.classList.remove('border-gray-200');
+    cardElement.classList.add('border-indigo-600', 'bg-indigo-50', 'selected-course');
+    
+    // Set the hidden input value
+    document.getElementById('course').value = courseId;
+    
+    console.log('Selected course:', courseId);
 }
 
 // ===== FRIENDS FUNCTIONALITY =====
@@ -977,6 +1133,10 @@ async function startRound() {
         document.getElementById('current-course').textContent = course.name;
         document.getElementById('scorecard').style.display = 'block';
 
+        // Add this at the end of the startRound() function, right before the closing } catch block
+        // Auto-collapse the new round section to save space
+        autoCollapseNewRound();
+
         Swal.fire({
             title: "Round Started!",
             text: `Started new round at ${course.name}`,
@@ -1620,6 +1780,11 @@ async function finishRound() {
         document.getElementById('course').value = '';
         document.getElementById('players').value = 'You';
         
+        // Expand new round section after finishing
+        if (!isNewRoundExpanded) {
+            toggleNewRoundSection();
+        }
+
         // Refresh history if we're on that tab
         const historySection = document.getElementById('history');
         if (historySection && historySection.classList.contains('active')) {
@@ -2521,6 +2686,11 @@ async function deleteRound(roundId) {
             if (error) {
                 throw error;
             }
+            
+            // Expand new round section after finishing
+            if (!isNewRoundExpanded) {
+                toggleNewRoundSection();
+            }
 
             Swal.fire({
                 title: "Deleted!",
@@ -2775,8 +2945,11 @@ window.goToHole = goToHole;
 window.deleteCurrentRound = deleteCurrentRound;
 window.deleteRoundFromDetails = deleteRoundFromDetails;
 window.copyRoundToText = copyRoundToText;
+window.toggleNewRoundSection = toggleNewRoundSection;
+window.autoCollapseNewRound = autoCollapseNewRound;
+window.restoreNewRoundState = restoreNewRoundState;
 
-// Run on page load
+// Update the existing window.addEventListener at the bottom of script.js
 window.addEventListener("DOMContentLoaded", async () => {
   const { data: { session } } = await supabase.auth.getSession();
   if (session) {
@@ -2785,7 +2958,10 @@ window.addEventListener("DOMContentLoaded", async () => {
     await loadProfile();
     await loadCourses();
     await loadCurrentRound();
-    showSection('new-round')
+    showSection('new-round');
+    
+    // Restore the new round section collapse state
+    setTimeout(restoreNewRoundState, 100);
   } else {
     console.log("User is not logged in");
   }

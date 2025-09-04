@@ -53,25 +53,48 @@
         <div class="pt-6">
             <!-- New Round Section -->
             <div id="new-round" class="section space-y-6">
-                <div class="bg-white rounded-xl shadow-lg border border-gray-200 p-6">
-                    <h2 class="text-2xl font-bold text-gray-800 mb-6 flex items-center gap-2">
-                        <span>🥏</span>
-                        Start New Round
-                    </h2>
-                    <div class="space-y-4">
-                        <div>
-                            <label for="course" class="block text-sm font-semibold text-gray-700 mb-2">Course</label>
-                            <select id="course" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white">
-                                <option value="">Select a course</option>
-                            </select>
+                <!-- Collapsible Header -->
+                <div class="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
+                    <button id="new-round-toggle" onclick="toggleNewRoundSection()" 
+                            class="w-full p-6 text-left hover:bg-gray-50 transition-colors duration-200 focus:outline-none focus:bg-gray-50">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-3">
+                                <span class="text-2xl">🥏</span>
+                                <div>
+                                    <h2 class="text-xl font-bold text-gray-800">Start New Round</h2>
+                                    <p class="text-sm text-gray-600 mt-1">Choose course and players to begin</p>
+                                </div>
+                            </div>
+                            <div id="new-round-chevron" class="transform transition-transform duration-300">
+                                <svg class="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                                </svg>
+                            </div>
                         </div>
-                        <div>
-                            <label for="players" class="block text-sm font-semibold text-gray-700 mb-2">Players (comma-separated)</label>
-                            <input type="text" id="players" placeholder="Enter player names..." value="You" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                    </button>
+                    
+                    <!-- Collapsible Content -->
+                    <div id="new-round-content" class="border-t border-gray-200 transition-all duration-300 ease-in-out overflow-hidden">
+                        <div class="p-6 space-y-4">
+                            <div>
+                                <label for="course" class="block text-sm font-semibold text-gray-700 mb-3">Choose Your Course</label>
+                                <div id="course-selection" class="space-y-2">
+                                    <div class="text-center text-gray-500 py-8">
+                                        <div class="text-4xl mb-2">🏌️</div>
+                                        <div>Loading courses...</div>
+                                    </div>
+                                </div>
+                                <!-- Hidden input to store selected course ID -->
+                                <input type="hidden" id="course" />
+                            </div>
+                            <div>
+                                <label for="players" class="block text-sm font-semibold text-gray-700 mb-2">Players (comma-separated)</label>
+                                <input type="text" id="players" placeholder="Enter player names..." value="You" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                            </div>
+                            <button onclick="startRound()" class="w-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white py-3 px-6 rounded-lg font-semibold hover:shadow-lg transform hover:-translate-y-0.5 transition-all duration-200">
+                                Start Round
+                            </button>
                         </div>
-                        <button onclick="startRound()" class="w-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white py-3 px-6 rounded-lg font-semibold hover:shadow-lg transform hover:-translate-y-0.5 transition-all duration-200">
-                            Start Round
-                        </button>
                     </div>
                 </div>
 
@@ -81,13 +104,13 @@
                     </h3>
                     <div id="scorecard-content" class="overflow-x-auto"></div>
                     <div class="flex gap-3 mt-6">
-                    <button onclick="finishRound()" class="flex-1 bg-green-600 text-white py-3 px-6 rounded-lg font-semibold hover:bg-green-700 transition-colors duration-200">
-                        Finish Round
-                    </button>
-                    <button onclick="deleteCurrentRound()" class="bg-red-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-red-700 transition-colors duration-200 text-sm">
-                        🗑️
-                    </button>
-                </div>
+                        <button onclick="finishRound()" class="flex-1 bg-green-600 text-white py-3 px-6 rounded-lg font-semibold hover:bg-green-700 transition-colors duration-200">
+                            Finish Round
+                        </button>
+                        <button onclick="deleteCurrentRound()" class="bg-red-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-red-700 transition-colors duration-200 text-sm">
+                            🗑️
+                        </button>
+                    </div>
                 </div>
             </div>
 

@@ -19,6 +19,58 @@ body {
     padding: 15px;
 }
 
+.course-card {
+    background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+#new-round-content {
+    max-height: 1000px;
+    transition: all 0.3s ease-in-out;
+}
+
+#new-round-toggle:hover {
+    background-color: #f9fafb;
+}
+
+#new-round-chevron {
+    transition: transform 0.3s ease;
+}
+
+.course-card:hover {
+    background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+}
+
+.course-card.selected-course {
+    background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2);
+}
+
+.difficulty-badge {
+    animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.8; }
+}
+
+/* Mobile responsive adjustments */
+@media (max-width: 768px) {
+    .course-card {
+        padding: 12px;
+    }
+    
+    .course-card h3 {
+        font-size: 16px;
+    }
+    
+    .difficulty-badge {
+        font-size: 10px;
+        padding: 2px 6px;
+    }
+}
+
 .login-card {
     background: rgba(255, 255, 255, 0.95);
     border-radius: 20px;
