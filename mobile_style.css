@@ -304,6 +304,6 @@
     }
     
     input, select, textarea {
-        min-height: 44px;
+        min-height: 24px;
     }
 }

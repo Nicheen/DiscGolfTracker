@@ -83,13 +83,11 @@
                 <!-- Collapsible Header -->
                 <div class="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
                     <button id="new-round-toggle" onclick="toggleNewRoundSection()" 
-                            class="w-full p-6 text-left hover:bg-gray-50 transition-colors duration-200 focus:outline-none focus:bg-gray-50">
+                            class="w-full p-6 pt-4 pb-4 text-left hover:bg-gray-50 transition-colors duration-200 focus:outline-none focus:bg-gray-50">
                         <div class="flex items-center justify-between">
                             <div class="flex items-center gap-3">
-                                <span class="text-2xl">🥏</span>
                                 <div>
-                                    <h2 class="text-xl font-bold text-gray-800">Start New Round</h2>
-                                    <p class="text-sm text-gray-600 mt-1">Choose course and players to begin</p>
+                                    <div id="distance-tracker"></div>
                                 </div>
                             </div>
                             <div id="new-round-chevron" class="transform transition-transform duration-300">
@@ -102,9 +100,8 @@
                     
                     <!-- Collapsible Content -->
                     <div id="new-round-content" class="border-t border-gray-200 transition-all duration-300 ease-in-out overflow-hidden">
-                        <div class="p-6 space-y-4">
+                        <div class="p-6 pt-4 pb-4 space-y-4">
                             <div>
-                                <label for="course" class="block text-sm font-semibold text-gray-700 mb-3">Choose Your Course</label>
                                 <div id="course-selection" class="space-y-2">
                                     <div class="text-center text-gray-500 py-8">
                                         <div class="text-4xl mb-2">🏌️</div>
@@ -168,15 +165,15 @@
                         </div>
                         <div class="bg-gradient-to-br from-green-500 to-teal-600 text-white p-6 rounded-xl text-center shadow-lg">
                             <div id="avg-score" class="text-3xl font-bold mb-2">-</div>
-                            <div class="text-green-100 text-sm">Average Score</div>
+                            <div class="text-green-100 text-sm">Average ±Par</div>
                         </div>
                         <div class="bg-gradient-to-br from-orange-500 to-red-600 text-white p-6 rounded-xl text-center shadow-lg">
                             <div id="best-round" class="text-3xl font-bold mb-2">-</div>
                             <div class="text-orange-100 text-sm">Best Round</div>
                         </div>
                         <div class="bg-gradient-to-br from-purple-500 to-pink-600 text-white p-6 rounded-xl text-center shadow-lg">
-                            <div id="avg-par" class="text-3xl font-bold mb-2">-</div>
-                            <div class="text-purple-100 text-sm">Average +/-</div>
+                            <div id="best-par" class="text-3xl font-bold mb-2">-</div>
+                            <div class="text-purple-100 text-sm">Best ±Par</div>
                         </div>
                     </div>
 
@@ -303,7 +300,6 @@
             </div>
         </div>
 
-        
         <!-- Fixed Bottom Navigation -->
         <nav class="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-gray-200 px-2 py-2 z-50 shadow-lg">
             <div class="flex items-center max-w-6xl mx-auto">

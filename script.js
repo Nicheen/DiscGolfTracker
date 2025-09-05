@@ -11,7 +11,11 @@ const supabase = createClient(supabaseUrl, supabaseKey, {
 
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 const COURSES_CACHE_DURATION = 10 * 60 * 1000; // 10 minutes
+const INITIAL_COURSE_DISPLAY_COUNT = 2;
 
+let showAllCourses = false;
+let sortDirection = 'asc'; // 'asc' or 'desc'
+let courseSortBy = 'distance';
 let selectedProfilePicture = null;
 let coursesData = [];
 let isNewRoundExpanded = true;
@@ -35,7 +39,6 @@ function toggleNewRoundSection() {
         content.style.paddingTop = '0';
         content.style.paddingBottom = '0';
         chevron.style.transform = 'rotate(-90deg)';
-        toggle.querySelector('p').textContent = 'Click to expand and start a new round';
         isNewRoundExpanded = false;
         
         // Store state in localStorage
@@ -46,7 +49,6 @@ function toggleNewRoundSection() {
         content.style.paddingTop = '';
         content.style.paddingBottom = '';
         chevron.style.transform = 'rotate(0deg)';
-        toggle.querySelector('p').textContent = 'Choose course and players to begin';
         isNewRoundExpanded = true;
         
         // Store state in localStorage
@@ -58,6 +60,181 @@ function toggleNewRoundSection() {
 function autoCollapseNewRound() {
     if (isNewRoundExpanded) {
         toggleNewRoundSection();
+    }
+}
+
+// Sort courses by different criteria with direction support
+function sortCourses(sortBy) {
+    courseSortBy = sortBy;
+    
+    coursesData.sort((a, b) => {
+        let comparison = 0;
+        
+        switch (sortBy) {
+            case 'distance':
+                // Distance sorting
+                if (a.distance !== null && b.distance === null) comparison = -1;
+                else if (a.distance === null && b.distance !== null) comparison = 1;
+                else if (a.distance !== null && b.distance !== null) {
+                    comparison = a.distance - b.distance;
+                } else {
+                    comparison = a.name.localeCompare(b.name);
+                }
+                break;
+            
+            case 'name':
+                comparison = a.name.localeCompare(b.name);
+                break;
+            
+            case 'difficulty':
+                const getDifficultyScore = (course) => {
+                    const totalPar = course.holes.reduce((a, b) => a + b, 0);
+                    const avgDistance = Math.round(course.distances.reduce((a, b) => a + b, 0) / course.distances.length);
+                    const difficulty = getDifficultyLevel(course.name, totalPar, course.holes.length, avgDistance);
+                    
+                    if (difficulty.text === 'Easy') return 1;
+                    if (difficulty.text === 'Medium') return 2;
+                    if (difficulty.text === 'Hard') return 3;
+                    return 2;
+                };
+                comparison = getDifficultyScore(a) - getDifficultyScore(b);
+                break;
+            
+            case 'holes':
+                comparison = a.holes.length - b.holes.length;
+                if (comparison === 0) {
+                    comparison = a.name.localeCompare(b.name);
+                }
+                break;
+            
+            default:
+                comparison = 0;
+        }
+        
+        // Apply sort direction
+        return sortDirection === 'desc' ? -comparison : comparison;
+    });
+}
+
+// Toggle sort direction
+function toggleSortDirection() {
+    sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+    
+    // Update the icon
+    const icon = document.getElementById('sort-direction-icon');
+    if (icon) {
+        icon.textContent = sortDirection === 'asc' ? '↓' : '↑';
+    }
+    
+    // Update button title
+    const button = document.getElementById('sort-direction');
+    if (button) {
+        button.title = sortDirection === 'asc' ? 'Click to sort descending' : 'Click to sort ascending';
+    }
+    
+    // Re-sort and display
+    sortCourses(courseSortBy);
+    displayCourses();
+}
+
+// Display courses with peek preview functionality
+function displayCourses() {
+    const coursesContainer = document.getElementById('courses-container');
+    if (!coursesContainer) return;
+    
+    coursesContainer.innerHTML = '';
+    
+    coursesData.forEach((course, index) => {
+        const totalPar = course.holes.reduce((a, b) => a + b, 0);
+        const avgDistance = Math.round(course.distances.reduce((a, b) => a + b, 0) / course.distances.length);
+        const difficulty = getDifficultyLevel(course.name, totalPar, course.holes.length, avgDistance);
+        
+        const courseCard = document.createElement('div');
+        
+        // Determine if this is the peek card (4th card when not showing all)
+        const isPeekCard = !showAllCourses && index === INITIAL_COURSE_DISPLAY_COUNT;
+        const isHidden = !showAllCourses && index > INITIAL_COURSE_DISPLAY_COUNT;
+        
+        if (isHidden) {
+            return; // Don't render cards beyond the peek card
+        }
+        
+        // Base classes
+        let cardClasses = 'course-card relative border-2 border-gray-200 rounded-lg cursor-pointer transition-all duration-300';
+        
+        if (isPeekCard) {
+            // Peek card styling
+            cardClasses += ' peek-card opacity-40 hover:opacity-60 pointer-events-auto overflow-hidden';
+            courseCard.onclick = () => {
+                showAllCourses = true;
+                displayCourses();
+            };
+        } else {
+            // Regular card styling
+            cardClasses += ' p-3 hover:border-indigo-400 hover:shadow-md hover:-translate-y-0.5';
+            courseCard.onclick = () => selectCourse(course.id, courseCard);
+        }
+        
+        courseCard.className = cardClasses;
+        
+        courseCard.innerHTML = `
+            ${isPeekCard ? '<div class="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-white z-10 pointer-events-none"></div>' : ''}
+            <div class="p-3 ${isPeekCard ? 'relative z-0' : ''}">
+                <div class="flex items-center justify-between">
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-center gap-2 mb-1 flex-wrap">
+                            <h3 class="font-bold text-gray-800 text-base truncate">${course.name}</h3>
+                            <span class="difficulty-badge px-2 py-0.5 rounded-full text-xs font-semibold ${difficulty.class} flex-shrink-0">
+                                ${difficulty.text}
+                            </span>
+                            ${course.distance !== null ? 
+                                `<span class="distance-badge px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-700 flex-shrink-0">
+                                    📍 ${formatDistance(course.distance)}
+                                </span>` : ''
+                            }
+                        </div>
+                        <div class="flex items-center gap-3 text-xs text-gray-600">
+                            <span class="flex items-center gap-1">
+                                <span class="text-indigo-600">🕳️</span>
+                                <span class="font-medium">${course.holes.length}</span>
+                            </span>
+                            <span class="flex items-center gap-1">
+                                <span class="text-green-600">⛳</span>
+                                <span class="font-medium">${totalPar}</span>
+                            </span>
+                            <span class="flex items-center gap-1">
+                                <span class="text-orange-600">📏</span>
+                                <span class="font-medium">~${avgDistance}m</span>
+                            </span>
+                        </div>
+                    </div>
+                    <div class="text-xl ml-3 flex-shrink-0">
+                        ${getCourseEmoji(course.name)}
+                    </div>
+                </div>
+            </div>
+            ${isPeekCard ? `
+                <div class="absolute inset-0 flex items-center justify-center z-20 pointer-events-none">
+                    <div class="bg-black/10 backdrop-blur-sm rounded-full px-3 py-1">
+                        <span class="text-s pb-2 font-medium text-black-700">+${coursesData.length - INITIAL_COURSE_DISPLAY_COUNT} more courses</span>
+                    </div>
+                </div>
+            ` : ''}
+        `;
+        
+        coursesContainer.appendChild(courseCard);
+    });
+    
+    // Add a "Show Less" button when all courses are shown
+    if (showAllCourses && coursesData.length > INITIAL_COURSE_DISPLAY_COUNT) {
+        const showLessButton = document.createElement('button');
+        showLessButton.className = 'w-full py-2 text-xs text-gray-600 hover:text-gray-800 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors mt-2';
+        showLessButton.textContent = 'Show Less';
+        showLessButton.onclick = () => {
+            showAllCourses = false;
+            displayCourses();
+        };
+        coursesContainer.appendChild(showLessButton);
     }
 }
 
@@ -76,7 +253,6 @@ function restoreNewRoundState() {
             content.style.paddingBottom = '0';
             content.style.transition = 'none'; // Disable transition for initial load
             chevron.style.transform = 'rotate(-90deg)';
-            toggle.querySelector('p').textContent = 'Click to expand and start a new round';
             isNewRoundExpanded = false;
             
             // Re-enable transition after a short delay
@@ -224,55 +400,62 @@ async function loadCourses() {
 
     coursesCacheTime = Date.now();
 
-    // Update the course selection UI
+    // Update the course selection UI - replace the existing courseSelection.innerHTML = '' section with:
     const courseSelection = document.getElementById("course-selection");
+    const distanceElement = document.getElementById("distance-tracker");
     if (courseSelection) {
-        courseSelection.innerHTML = '';
-        
-        coursesData.forEach(course => {
-            const totalPar = course.holes.reduce((a, b) => a + b, 0);
-            const avgDistance = Math.round(course.distances.reduce((a, b) => a + b, 0) / course.distances.length);
-            const difficulty = getDifficultyLevel(course.name, totalPar, course.holes.length, avgDistance);
-            
-            const courseCard = document.createElement('div');
-            courseCard.className = 'course-card p-4 border-2 border-gray-200 rounded-xl cursor-pointer transition-all duration-200 hover:border-indigo-400 hover:shadow-lg hover:-translate-y-1';
-            courseCard.onclick = () => selectCourse(course.id, courseCard);
-            showLocationStatus(userLocation !== null);
-            courseCard.innerHTML = `
-                <div class="flex items-center justify-between">
-                    <div class="flex-1">
-                        <div class="flex items-center gap-2 mb-1">
-                            <h3 class="font-bold text-gray-800 text-lg">${course.name}</h3>
-                            <span class="difficulty-badge px-2 py-1 rounded-full text-xs font-semibold ${difficulty.class}">
-                                ${difficulty.text}
-                            </span>
-                        </div>
-                        <div class="flex items-center gap-2 sm:gap-4 text-sm text-gray-600">
-                            <span class="flex items-center gap-1">
-                                <span class="text-indigo-600">🕳️</span>
-                                <span class="font-medium">${course.holes.length}</span>
-                                <span class="hidden sm:inline">holes</span>
-                            </span>
-                            <span class="flex items-center gap-1">
-                                <span class="text-green-600">⛳</span>
-                                <span class="hidden sm:inline">Par</span>
-                                <span class="font-medium">${totalPar}</span>
-                            </span>
-                            <span class="flex items-center gap-1">
-                                <span class="text-orange-600">📏</span>
-                                <span class="font-medium">~${avgDistance}m</span>
-                                <span class="hidden sm:inline">avg</span>
-                            </span>
-                        </div>
-                    </div>
-                    <div class="text-2xl ml-4">
-                        ${getCourseEmoji(course.name)}
+        distanceElement.innerHTML = `
+            <div class="flex items-center justify-between w-full">
+                <div class="flex items-center gap-1">
+                    <span class="text-2xl">🥏</span>
+                    <div class="flex items-center gap-2">
+                        <h2 class="text-xl font-bold text-gray-800">New Round</h2>
+                        ${userLocation ? 
+                            '<span class="px-2 py-1 bg-green-100 text-green-700 text-xs rounded-full">📍 Sorted by distance</span>' : 
+                            '<span class="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded-full">📍 Location disabled</span>'
+                        }
                     </div>
                 </div>
-            `;
-            
-            courseSelection.appendChild(courseCard);
-        });
+            </div>
+        `;
+        // Update the course selection UI - replace the existing courseSelection.innerHTML section with:
+        courseSelection.innerHTML = `
+            <div id="courses-container" class="space-y-2">
+                <!-- Courses will be inserted here -->
+            </div>
+        `;
+        
+        // Add event listener for sort changes
+        const sortSelect = document.getElementById('course-sort');
+        if (sortSelect) {
+            sortSelect.addEventListener('change', (e) => {
+                sortCourses(e.target.value);
+                displayCourses();
+            });
+        }
+    }
+
+    // Set default sort based on location availability
+    courseSortBy = userLocation ? 'distance' : 'name';
+    
+    // Sort courses
+    sortCourses(courseSortBy);
+    
+    // Display courses
+    displayCourses();
+    
+    // Update sort selector and direction button to match current sort
+    const sortSelect = document.getElementById('course-sort');
+    const directionButton = document.getElementById('sort-direction');
+    const directionIcon = document.getElementById('sort-direction-icon');
+
+    if (sortSelect) {
+        sortSelect.value = courseSortBy;
+    }
+
+    if (directionButton && directionIcon) {
+        directionIcon.textContent = sortDirection === 'asc' ? '↓' : '↑';
+        directionButton.title = sortDirection === 'asc' ? 'Click to sort descending' : 'Click to sort ascending';
     }
 
     // Also update the old select element if it still exists (for compatibility)
@@ -811,7 +994,7 @@ function getDifficultyLevel(name, par, holes, avgDistance) {
     } else if (difficultyScore >= 4) { // Raised threshold from 3.5 to 4
         return { class: 'bg-red-100 text-red-700', text: 'Hard', emoji: '🔴' };
     } else {
-        return { class: 'bg-yellow-100 text-yellow-700', text: 'Medium', emoji: '🟡' };
+        return { class: 'bg-yellow-300 text-yellow-700', text: 'Medium', emoji: '🟡' };
     }
 }
 
@@ -2783,11 +2966,12 @@ async function updateProgress() {
         
         document.getElementById('total-rounds').textContent = yourRounds.length;
         
+        // Replace the no-data section with:
         if (yourRounds.length === 0) {
             // Reset all displays for no data
             document.getElementById('avg-score').textContent = '-';
             document.getElementById('best-round').textContent = '-';
-            document.getElementById('avg-par').textContent = '-';
+            document.getElementById('best-par').textContent = '-'; // Update this ID
             document.getElementById('last-5-avg').textContent = '-';
             document.getElementById('improvement-trend').textContent = '-';
             document.getElementById('best-course').textContent = 'No rounds yet';
@@ -2834,6 +3018,11 @@ async function updateProgress() {
         document.getElementById('avg-score').textContent = avgScore;
         document.getElementById('best-round').textContent = bestRound ? `${bestScore} (${bestRound.scoreToPar >= 0 ? '+' : ''}${bestRound.scoreToPar})` : bestScore;
         document.getElementById('avg-par').textContent = avgToPar >= 0 ? `+${avgToPar}` : avgToPar;
+
+        // Add this after the existing basic stats calculation:
+
+        const bestToPar = bestRound ? bestRound.scoreToPar : 0;
+        document.getElementById('best-par').textContent = bestToPar >= 0 ? `+${bestToPar}` : bestToPar;
 
         // Last 5 rounds average and trend
         const last5 = roundsWithDetails.slice(-5);
@@ -2996,7 +3185,7 @@ async function updateProgress() {
                             ${avgToPar >= 0 ? '+' : ''}${avgToPar}
                         </div>
                         <div class="text-sm text-gray-600">
-                            Best: ${stats.bestToPar >= 0 ? '+' : ''}${stats.bestToPar}
+                            Best: ${stats.bestToPar >= 0 ? '+' : ''}${stats.bestToPar} │ Avg: ${avgScore}
                         </div>
                     </div>
                 `;
@@ -3048,18 +3237,21 @@ async function updateUserStats() {
         );
         
         if (yourRounds.length > 0) {
-            const scores = yourRounds.map(round => 
-                round.finalScores[auth.currentUser.displayName]
-            );
-            const avgScore = scores.reduce((a, b) => a + b, 0) / scores.length;
+            // In updateProgress function, replace the basic stats calculation section with:
+
+            // Basic stats - calculate averages relative to par
+            const scores = roundsWithDetails.map(r => r.score);
+            const scoresToPar = roundsWithDetails.map(r => r.scoreToPar);
+
+            const avgScore = (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1);
+            const avgToPar = (scoresToPar.reduce((a, b) => a + b, 0) / scoresToPar.length).toFixed(1);
             const bestScore = Math.min(...scores);
-            
-            const userRef = doc(db, 'users', auth.currentUser.uid);
-            await updateDoc(userRef, {
-                'stats.totalRounds': yourRounds.length,
-                'stats.avgScore': avgScore,
-                'stats.bestScore': bestScore
-            });
+            const bestRound = roundsWithDetails.find(r => r.score === bestScore);
+
+            // Update displays - show average as difference from par
+            document.getElementById('avg-score').textContent = avgToPar >= 0 ? `+${avgToPar}` : avgToPar;
+            document.getElementById('best-round').textContent = bestRound ? `${bestScore} (${bestRound.scoreToPar >= 0 ? '+' : ''}${bestRound.scoreToPar})` : bestScore;
+            document.getElementById('avg-par').textContent = avgToPar >= 0 ? `+${avgToPar}` : avgToPar;
         }
     } catch (error) {
         console.error('Error updating stats:', error);
@@ -3930,6 +4122,9 @@ window.copyRoundToText = copyRoundToText;
 window.toggleNewRoundSection = toggleNewRoundSection;
 window.autoCollapseNewRound = autoCollapseNewRound;
 window.restoreNewRoundState = restoreNewRoundState;
+window.sortCourses = sortCourses;
+window.displayCourses = displayCourses;
+window.toggleSortDirection = toggleSortDirection;
 
 window.addEventListener("DOMContentLoaded", async () => {
     // Check for password reset parameters in both search and hash

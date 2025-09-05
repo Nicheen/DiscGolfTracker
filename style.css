@@ -737,3 +737,166 @@ input:checked + .slider:before {
 .slider.round:before {
   border-radius: 50%;
 }
+
+/* More compact course cards */
+.course-card {
+    transition: all 0.2s ease;
+}
+
+.course-card:hover {
+    transform: translateY(-1px);
+}
+
+.course-card.selected-course {
+    background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+    border-color: #3b82f6 !important;
+    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.25);
+}
+
+/* Compact badges */
+.difficulty-badge,
+.distance-badge {
+    font-size: 10px;
+    line-height: 1.2;
+    padding: 2px 6px;
+}
+
+/* Mobile adjustments */
+@media (max-width: 640px) {
+    .course-card {
+        padding: 12px;
+    }
+    
+    .course-card h3 {
+        font-size: 14px;
+    }
+    
+    .difficulty-badge,
+    .distance-badge {
+        font-size: 9px;
+        padding: 1px 4px;
+    }
+}
+
+/* Compact sort controls */
+#course-sort {
+    font-size: 11px;
+    padding: 4px 6px;
+    height: 28px;
+    min-width: 70px;
+    width: auto;
+}
+
+#sort-direction {
+    font-size: 14px;
+    padding: 0;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    user-select: none;
+}
+
+#sort-direction:hover {
+    background-color: #f3f4f6;
+}
+
+#show-more-courses {
+    font-size: 11px;
+    padding: 4px 8px;
+    height: 28px;
+    white-space: nowrap;
+}
+
+/* Mobile adjustments for controls */
+@media (max-width: 640px) {
+    #course-sort {
+        font-size: 10px;
+        min-width: 60px;
+        padding: 3px 4px;
+    }
+    
+    #sort-direction {
+        width: 24px;
+        height: 24px;
+        font-size: 12px;
+    }
+    
+    #show-more-courses {
+        font-size: 10px;
+        padding: 3px 6px;
+    }
+}
+
+/* Ensure dropdown doesn't get too wide */
+select#course-sort {
+    max-width: 80px;
+}
+
+/* Style the dropdown options */
+#course-sort option {
+    font-size: 12px;
+    padding: 2px;
+}
+
+/* Peek card styling */
+.peek-card {
+    position: relative;
+    transform: none !important;
+    border-color: #e5e7eb !important;
+}
+
+.peek-card:hover {
+    opacity: 0.7 !important;
+    border-color: #d1d5db !important;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1) !important;
+}
+
+/* Fade gradient overlay for peek card */
+.peek-card::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(to bottom, 
+        rgba(255, 255, 255, 0) 0%, 
+        rgba(255, 255, 255, 0.1) 30%, 
+        rgba(255, 255, 255, 0.8) 70%, 
+        rgba(255, 255, 255, 0.95) 100%);
+    pointer-events: none;
+    z-index: 5;
+}
+
+/* Ensure course container has smooth transitions */
+#courses-container {
+    transition: all 0.3s ease;
+}
+
+/* Show less button styling */
+.show-less-btn {
+    transition: all 0.2s ease;
+}
+
+.show-less-btn:hover {
+    background-color: #f9fafb;
+    border-color: #d1d5db;
+}
+
+/* Mobile adjustments */
+@media (max-width: 640px) {
+    .peek-card .absolute.inset-0.flex {
+        padding: 8px;
+    }
+    
+    .peek-card .bg-black\/10 {
+        padding: 6px 12px;
+    }
+    
+    .peek-card .text-xs {
+        font-size: 10px;
+    }
+}
