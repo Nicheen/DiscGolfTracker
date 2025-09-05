@@ -1070,3 +1070,11 @@ body.login-active {
     width: 100%;
     height: 100%;
 }
+
+#weather-widget.hidden {
+    display: none !important;
+}
+
+#weather-widget.flex {
+    display: flex !important;
+}

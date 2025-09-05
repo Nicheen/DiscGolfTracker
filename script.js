@@ -386,9 +386,11 @@ async function loadCourses() {
     const distanceElement = document.getElementById("distance-tracker");
 
     if (courseSelection) {
+        // In your loadCourses function, replace the distance tracker section with:
         distanceElement.innerHTML = `
             <div class="flex items-center justify-between w-full">
                 <div class="flex items-center gap-1">
+                    <span class="text-2xl">🥏</span>
                     <div class="flex items-center gap-2">
                         <h2 class="text-xl font-bold text-gray-800">New Round</h2>
                         ${userLocation ? 
@@ -1141,24 +1143,28 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
 async function getUserLocation() {
     return new Promise((resolve, reject) => {
         if (!navigator.geolocation) {
-            reject(new Error('Geolocation is not supported'));
+            console.log('Geolocation is not supported by this browser');
+            resolve(null);
             return;
         }
         
         navigator.geolocation.getCurrentPosition(
             (position) => {
+                console.log('Location permission granted');
                 resolve({
                     latitude: position.coords.latitude,
                     longitude: position.coords.longitude
                 });
             },
             (error) => {
-                console.warn('Geolocation error:', error.message);
-                resolve(null); // Return null instead of rejecting
+                console.log('Location permission denied or failed:', error.message);
+                // Always resolve with null instead of rejecting
+                // This way the weather widget will be hidden
+                resolve(null);
             },
             {
                 enableHighAccuracy: false,
-                timeout: 10000,
+                timeout: 5000, // Reduced timeout
                 maximumAge: 300000 // 5 minutes
             }
         );
@@ -1930,48 +1936,116 @@ async function loadWeather() {
     const weatherTemp = document.getElementById('weather-temp');
     const weatherDesc = document.getElementById('weather-desc');
     
-    if (!weatherWidget) return;
+    if (!weatherWidget || !weatherIcon || !weatherTemp || !weatherDesc) {
+        console.log('Weather widget elements not found');
+        return;
+    }
+    
+    // Start with widget hidden
+    weatherWidget.classList.add('hidden');
+    weatherWidget.classList.remove('flex');
     
     try {
-        // Get user location
-        const location = await getUserLocation();
+        console.log('Starting weather load...');
+        
+        // Get user location with timeout
+        const location = await Promise.race([
+            getUserLocation(),
+            new Promise((_, reject) => 
+                setTimeout(() => reject(new Error('Location timeout')), 5000)
+            )
+        ]);
+        
         if (!location) {
+            console.log('No location available - keeping weather widget hidden');
             weatherWidget.classList.add('hidden');
+            weatherWidget.classList.remove('flex');
             return;
         }
         
-        // Fetch weather data using free service
-        const weather = await getWeatherDataFree(location.latitude, location.longitude);
+        console.log('Got location, fetching weather...');
+        
+        // Fetch weather data with timeout
+        const weather = await Promise.race([
+            getWeatherDataFree(location.latitude, location.longitude),
+            new Promise((_, reject) => 
+                setTimeout(() => reject(new Error('Weather timeout')), 8000)
+            )
+        ]);
+        
         if (!weather) {
+            console.log('No weather data available - hiding widget');
             weatherWidget.classList.add('hidden');
+            weatherWidget.classList.remove('flex');
             return;
         }
+        
+        console.log('Weather data received:', weather);
         
         // Update UI
         weatherIcon.textContent = getWeatherEmoji(weather.main);
         weatherTemp.textContent = `${weather.temperature}°C`;
         weatherDesc.textContent = weather.description;
         
-        // Show the widget
+        // Show the widget only if we have data
         weatherWidget.classList.remove('hidden');
         weatherWidget.classList.add('flex');
+        
+        console.log('Weather widget updated and shown successfully');
         
     } catch (error) {
         console.error('Error loading weather:', error);
         weatherWidget.classList.add('hidden');
+        weatherWidget.classList.remove('flex');
     }
 }
-
-// Alternative: Use a free weather service that doesn't require API key
 async function getWeatherDataFree(lat, lon) {
+    console.log(`Fetching weather for coordinates: ${lat}, ${lon}`);
+    
+    // Try Open-Meteo first (most reliable free API)
     try {
-        // Using wttr.in - a free weather service
         const response = await fetch(
-            `https://wttr.in/${lat},${lon}?format=j1`
+            `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&timezone=auto`,
+            { 
+                method: 'GET',
+                headers: {
+                    'Accept': 'application/json',
+                }
+            }
         );
         
         if (!response.ok) {
-            throw new Error('Weather data not available');
+            throw new Error(`Open-Meteo API error: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        console.log('Open-Meteo response:', data);
+        
+        if (data.current_weather) {
+            return {
+                temperature: Math.round(data.current_weather.temperature),
+                description: getWeatherDescription(data.current_weather.weathercode),
+                main: getWeatherDescription(data.current_weather.weathercode)
+            };
+        }
+    } catch (error) {
+        console.error('Open-Meteo failed:', error);
+    }
+    
+    // Fallback to wttr.in
+    try {
+        const response = await fetch(
+            `https://wttr.in/${lat},${lon}?format=j1`,
+            {
+                method: 'GET',
+                headers: {
+                    'User-Agent': 'DiscGolfTracker/1.0'
+                }
+            }
+        );
+        
+        if (!response.ok) {
+            throw new Error(`wttr.in API error: ${response.status}`);
         }
         
         const data = await response.json();
@@ -1983,24 +2057,38 @@ async function getWeatherDataFree(lat, lon) {
             main: current.weatherDesc[0].value
         };
     } catch (error) {
-        console.error('Error fetching weather:', error);
-        
-        // Fallback to even simpler service
-        try {
-            const response = await fetch(
-                `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true`
-            );
-            const data = await response.json();
-            
-            return {
-                temperature: Math.round(data.current_weather.temperature),
-                description: 'Current weather',
-                main: 'Clear' // Simplified
-            };
-        } catch (fallbackError) {
-            return null;
-        }
+        console.error('wttr.in failed:', error);
+        return null;
     }
+}
+
+// Add helper function for weather codes
+function getWeatherDescription(weathercode) {
+    const codes = {
+        0: 'Clear sky',
+        1: 'Mainly clear',
+        2: 'Partly cloudy',
+        3: 'Overcast',
+        45: 'Fog',
+        48: 'Depositing rime fog',
+        51: 'Light drizzle',
+        53: 'Moderate drizzle',
+        55: 'Dense drizzle',
+        61: 'Slight rain',
+        63: 'Moderate rain',
+        65: 'Heavy rain',
+        71: 'Slight snow',
+        73: 'Moderate snow',
+        75: 'Heavy snow',
+        80: 'Slight rain showers',
+        81: 'Moderate rain showers',
+        82: 'Violent rain showers',
+        95: 'Thunderstorm',
+        96: 'Thunderstorm with hail',
+        99: 'Thunderstorm with heavy hail'
+    };
+    
+    return codes[weathercode] || 'Unknown';
 }
 
 // Clear search results
@@ -3779,26 +3867,22 @@ async function loadCurrentRound() {
 
     try {
         // Check if there's an in-progress round
-        const { data: inProgressRound, error } = await supabase
+        const { data: inProgressRounds, error } = await supabase
             .from('rounds')
             .select('*')
             .eq('user_id', user.id)
             .eq('status', 'in_progress')
             .order('created_at', { ascending: false })
-            .limit(1)
-            .single();
+            .limit(1);
 
-        if (error && error.code !== 'PGRST116') {
+        if (error) {
             console.error('Error loading current round:', error);
             return;
         }
 
-        if (inProgressRound) {
-            if (inProgressRound.status !== 'in_progress') {
-                console.log('Round found but status is not in_progress, skipping...');
-                return;
-            }
+        const inProgressRound = inProgressRounds && inProgressRounds.length > 0 ? inProgressRounds[0] : null;
 
+        if (inProgressRound) {
             const course = coursesData.find(c => c.id == inProgressRound.course_id);
             if (course) {
                 // Handle both old and new data formats, including guest players
@@ -4696,32 +4780,6 @@ async function showNewPasswordForm() {
     }
 }
 
-// Add this function to show location status
-function showLocationStatus(hasLocation) {
-    const courseSelection = document.getElementById("course-selection");
-    if (!courseSelection) return;
-    
-    // Remove existing status message
-    const existingStatus = courseSelection.querySelector('.location-status');
-    if (existingStatus) {
-        existingStatus.remove();
-    }
-    
-    // Add status message
-    const statusDiv = document.createElement('div');
-    statusDiv.className = 'location-status text-sm p-3 mb-4 rounded-lg text-center';
-    
-    if (hasLocation) {
-        statusDiv.className += ' bg-green-50 text-green-700 border border-green-200';
-        statusDiv.innerHTML = '📍 Courses sorted by distance from your location';
-    } else {
-        statusDiv.className += ' bg-amber-50 text-amber-700 border border-amber-200';
-        statusDiv.innerHTML = '📍 Enable location access to see distances to courses';
-    }
-    
-    courseSelection.insertBefore(statusDiv, courseSelection.firstChild);
-}
-
 // Add to window exports
 window.handlePasswordReset = handlePasswordReset;
 
@@ -4760,9 +4818,8 @@ window.updateScorecardDisplay = updateScorecardDisplay;
 window.calculateDistance = calculateDistance;
 window.getUserLocation = getUserLocation;
 window.formatDistance = formatDistance;
-window.showLocationStatus = showLocationStatus;
 window.addGuestPlayerToRound = addGuestPlayerToRound;
-
+window.getWeatherDescription = getWeatherDescription;
 window.deleteRound = deleteRound;
 window.updateProgress = updateProgress;
 window.loadHistory = loadHistory;
