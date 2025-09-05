@@ -900,3 +900,84 @@ select#course-sort {
         font-size: 10px;
     }
 }
+
+/* Fixed header styles */
+.fixed-header {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 40;
+    backdrop-filter: blur(12px);
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Enhance backdrop blur support */
+@supports (backdrop-filter: blur(12px)) {
+    .fixed-header {
+        background: rgba(255, 255, 255, 0.8);
+    }
+}
+
+/* Scrolled state for enhanced shadow */
+.fixed-header.scrolled {
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+    background: rgba(255, 255, 255, 0.98);
+}
+
+/* Adjust main content padding */
+.main-content-with-fixed-header {
+    padding-top: 120px; /* Adjust based on header height */
+}
+
+@media (max-width: 768px) {
+    .main-content-with-fixed-header {
+        padding-top: 100px; /* Smaller padding on mobile */
+    }
+    
+    .fixed-header {
+        margin: 8px;
+        padding: 16px;
+    }
+}
+
+#weather-widget {
+    background: rgba(255, 255, 255, 0.9) !important;
+    border: 1px solid rgba(0, 0, 0, 0.1) !important;
+    backdrop-filter: blur(8px);
+}
+
+#weather-temp {
+    color: #1f2937 !important;
+    font-weight: 600 !important;
+}
+
+#weather-desc {
+    color: #4b5563 !important;
+}
+
+#weather-icon {
+    font-size: 18px !important;
+}
+
+/* Ensure visibility on mobile too */
+@media (max-width: 768px) {
+    #weather-widget {
+        display: flex !important;
+        font-size: 12px;
+    }
+    
+    #weather-temp {
+        font-size: 12px !important;
+    }
+    
+    #weather-desc {
+        font-size: 10px !important;
+    }
+}
+
+#main-header {
+    transition: background-color 0.2s ease-out, backdrop-filter 0.2s ease-out;
+}

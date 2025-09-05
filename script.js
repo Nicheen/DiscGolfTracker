@@ -11,7 +11,9 @@ const supabase = createClient(supabaseUrl, supabaseKey, {
 
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 const COURSES_CACHE_DURATION = 10 * 60 * 1000; // 10 minutes
-const INITIAL_COURSE_DISPLAY_COUNT = 2;
+const INITIAL_COURSE_DISPLAY_COUNT = 3;
+const scrollThreshold = 50; // Minimum scroll distance before triggering
+const fadeDistance = 100; // Distance over which to fade
 
 let showAllCourses = false;
 let sortDirection = 'asc'; // 'asc' or 'desc'
@@ -114,27 +116,6 @@ function sortCourses(sortBy) {
         // Apply sort direction
         return sortDirection === 'desc' ? -comparison : comparison;
     });
-}
-
-// Toggle sort direction
-function toggleSortDirection() {
-    sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
-    
-    // Update the icon
-    const icon = document.getElementById('sort-direction-icon');
-    if (icon) {
-        icon.textContent = sortDirection === 'asc' ? '↓' : '↑';
-    }
-    
-    // Update button title
-    const button = document.getElementById('sort-direction');
-    if (button) {
-        button.title = sortDirection === 'asc' ? 'Click to sort descending' : 'Click to sort ascending';
-    }
-    
-    // Re-sort and display
-    sortCourses(courseSortBy);
-    displayCourses();
 }
 
 // Display courses with peek preview functionality
@@ -446,16 +427,9 @@ async function loadCourses() {
     
     // Update sort selector and direction button to match current sort
     const sortSelect = document.getElementById('course-sort');
-    const directionButton = document.getElementById('sort-direction');
-    const directionIcon = document.getElementById('sort-direction-icon');
 
     if (sortSelect) {
         sortSelect.value = courseSortBy;
-    }
-
-    if (directionButton && directionIcon) {
-        directionIcon.textContent = sortDirection === 'asc' ? '↓' : '↑';
-        directionButton.title = sortDirection === 'asc' ? 'Click to sort descending' : 'Click to sort ascending';
     }
 
     // Also update the old select element if it still exists (for compatibility)
@@ -1511,17 +1485,6 @@ async function addFriendToRound(friendUsername) {
         return;
     }
     
-    const playersInput = document.getElementById('players');
-
-    if (!playersInput) {
-        Swal.fire({
-            icon: "warning",
-            title: "No Active Round",
-            text: "Please go to the Game section to start a new round first.",
-        });
-        return;
-    }
-    
     if (!currentRound) {
         Swal.fire({
             icon: "warning",
@@ -1559,11 +1522,6 @@ async function addFriendToRound(friendUsername) {
         }
 
         const friendUserId = friendProfile.id;
-        
-        // Update the players input field
-        const currentPlayers = playersInput.value.split(',').map(p => p.trim()).filter(p => p);
-        currentPlayers.push(friendUsername);
-        playersInput.value = currentPlayers.join(', ');
         
         // Add the new player to the current round
         currentRound.playerIds.push(friendUserId);
@@ -1777,6 +1735,140 @@ async function sendFriendRequest(friendId, friendUsername) {
     }
 }
 
+// Weather functionality
+async function getWeatherData(lat, lon) {
+    try {
+        // Using OpenWeatherMap API (you'll need to get a free API key from openweathermap.org)
+        const API_KEY = 'YOUR_API_KEY_HERE'; // Replace with your actual API key
+        const response = await fetch(
+            `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${API_KEY}&units=metric`
+        );
+        
+        if (!response.ok) {
+            throw new Error('Weather data not available');
+        }
+        
+        const data = await response.json();
+        return {
+            temperature: Math.round(data.main.temp),
+            description: data.weather[0].description,
+            icon: data.weather[0].icon,
+            main: data.weather[0].main
+        };
+    } catch (error) {
+        console.error('Error fetching weather:', error);
+        return null;
+    }
+}
+
+function getWeatherEmoji(weatherMain, icon) {
+    const isDay = icon?.includes('d');
+    
+    switch (weatherMain?.toLowerCase()) {
+        case 'clear':
+            return isDay ? '☀️' : '🌙';
+        case 'clouds':
+            return isDay ? '⛅' : '☁️';
+        case 'rain':
+            return '🌧️';
+        case 'drizzle':
+            return '🌦️';
+        case 'thunderstorm':
+            return '⛈️';
+        case 'snow':
+            return '❄️';
+        case 'mist':
+        case 'fog':
+            return '🌫️';
+        case 'haze':
+            return '🌫️';
+        case 'dust':
+        case 'sand':
+            return '🌪️';
+        default:
+            return isDay ? '🌤️' : '🌙';
+    }
+}
+
+async function loadWeather() {
+    const weatherWidget = document.getElementById('weather-widget');
+    const weatherIcon = document.getElementById('weather-icon');
+    const weatherTemp = document.getElementById('weather-temp');
+    const weatherDesc = document.getElementById('weather-desc');
+    
+    if (!weatherWidget) return;
+    
+    try {
+        // Get user location
+        const location = await getUserLocation();
+        if (!location) {
+            weatherWidget.classList.add('hidden');
+            return;
+        }
+        
+        // Fetch weather data using free service
+        const weather = await getWeatherDataFree(location.latitude, location.longitude);
+        if (!weather) {
+            weatherWidget.classList.add('hidden');
+            return;
+        }
+        
+        // Update UI
+        weatherIcon.textContent = getWeatherEmoji(weather.main);
+        weatherTemp.textContent = `${weather.temperature}°C`;
+        weatherDesc.textContent = weather.description;
+        
+        // Show the widget
+        weatherWidget.classList.remove('hidden');
+        weatherWidget.classList.add('flex');
+        
+    } catch (error) {
+        console.error('Error loading weather:', error);
+        weatherWidget.classList.add('hidden');
+    }
+}
+
+// Alternative: Use a free weather service that doesn't require API key
+async function getWeatherDataFree(lat, lon) {
+    try {
+        // Using wttr.in - a free weather service
+        const response = await fetch(
+            `https://wttr.in/${lat},${lon}?format=j1`
+        );
+        
+        if (!response.ok) {
+            throw new Error('Weather data not available');
+        }
+        
+        const data = await response.json();
+        const current = data.current_condition[0];
+        
+        return {
+            temperature: Math.round(current.temp_C),
+            description: current.weatherDesc[0].value.toLowerCase(),
+            main: current.weatherDesc[0].value
+        };
+    } catch (error) {
+        console.error('Error fetching weather:', error);
+        
+        // Fallback to even simpler service
+        try {
+            const response = await fetch(
+                `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true`
+            );
+            const data = await response.json();
+            
+            return {
+                temperature: Math.round(data.current_weather.temperature),
+                description: 'Current weather',
+                main: 'Clear' // Simplified
+            };
+        } catch (fallbackError) {
+            return null;
+        }
+    }
+}
+
 // Clear search results
 function clearSearchResults() {
     const resultsContainer = document.getElementById('user-search-results');
@@ -1828,13 +1920,12 @@ function showSection(sectionId) {
 
 async function startRound() {
     const courseId = document.getElementById('course').value;
-    const playersText = document.getElementById('players').value;
     
-    if (!courseId || !playersText) {
+    if (!courseId) {
         Swal.fire({
             icon: "warning",
             title: "Missing Information",
-            text: "Please select a course and enter players",
+            text: "Please select a course",
         });
         return;
     }
@@ -1862,72 +1953,32 @@ async function startRound() {
         return;
     }
 
-    let players = playersText.split(',').map(p => p.trim()).filter(p => p);
-    
-    // Convert player names to user IDs and create player mapping
-    const playerIds = [];
-    const playerIdToUsername = {};
-    const usernameToPlayerId = {};
-    const guestPlayers = []; // Store guest players separately
+    // Start with just the current user
+    const playerIds = [user.id];
+    const playerIdToUsername = { [user.id]: currentUsername };
+    const usernameToPlayerId = { [currentUsername]: user.id };
+    const guestPlayers = [];
 
-    for (const playerName of players) {
-        if (playerName.toLowerCase() === 'you' || playerName === currentUsername || playerName == "") {
-            // Current user
-            playerIds.push(user.id);
-            playerIdToUsername[user.id] = currentUsername;
-            usernameToPlayerId[currentUsername] = user.id;
-        } else {
-            // Try to find user by username
-            const { data: playerProfile } = await supabase
-                .from('profiles')
-                .select('id, username')
-                .eq('username', playerName)
-                .single();
-            
-            if (playerProfile) {
-                // Registered user
-                playerIds.push(playerProfile.id);
-                playerIdToUsername[playerProfile.id] = playerProfile.username;
-                usernameToPlayerId[playerProfile.username] = playerProfile.id;
-            } else {
-                // Guest player - store in separate array
-                const guestDisplayName = `${playerName} (Guest)`;
-                guestPlayers.push(playerName);
-                // For local tracking, use a guest identifier
-                const guestId = `guest_${playerName.replace(/\s+/g, '_').toLowerCase()}`;
-                playerIdToUsername[guestId] = guestDisplayName;
-                usernameToPlayerId[guestDisplayName] = guestId;
-            }
-        }
-    }
-
-    console.log('Player IDs that will be saved:', playerIds);
+    console.log('Starting round with player ID:', user.id);
     console.log('Player ID to Username mapping:', playerIdToUsername);
-    console.log('Guest players:', guestPlayers);
 
-    // Initialize scores object using player IDs and guest IDs
-    const initialScores = {};
-    playerIds.forEach(playerId => {
-        initialScores[playerId] = new Array(course.holes.length).fill(0);
-    });
-
-    guestPlayers.forEach(guestName => {
-        const guestId = `guest_${guestName.replace(/\s+/g, '_').toLowerCase()}`;
-        initialScores[guestId] = new Array(course.holes.length).fill(0);
-    });
+    // Initialize scores object with just the current user
+    const initialScores = {
+        [user.id]: new Array(course.holes.length).fill(0)
+    };
 
     try {
-        // Save the round to Supabase - only store registered player IDs in player_ids
+        // Save the round to Supabase
         const { data: newRound, error } = await supabase
             .from('rounds')
             .insert({
                 user_id: user.id,
                 course_id: parseInt(courseId),
                 course_name: course.name,
-                players: [...playerIds.map(id => playerIdToUsername[id]), ...guestPlayers.map(name => `${name} (Guest)`)], // All players for display
-                player_ids: playerIds, // Only registered user IDs
-                player_usernames: playerIdToUsername, // Mapping for registered users
-                guest_players: guestPlayers, // Store guest players separately
+                players: [currentUsername], // Only current user initially
+                player_ids: playerIds,
+                player_usernames: playerIdToUsername,
+                guest_players: guestPlayers,
                 scores: initialScores,
                 date: new Date().toLocaleDateString(),
                 status: 'in_progress'
@@ -1947,14 +1998,13 @@ async function startRound() {
 
         console.log('Created round with player_ids:', newRound.player_ids);
 
-        // Set current round with both registered and guest players
-        const allPlayerIds = [...playerIds, ...guestPlayers.map(name => `guest_${name.replace(/\s+/g, '_').toLowerCase()}`)];
+        // Set current round with just the current user
         currentRound = {
             id: newRound.id,
             courseId: courseId,
             courseName: course.name,
-            playerIds: allPlayerIds, // All players (registered + guests)
-            registeredPlayerIds: playerIds, // Keep track of registered players only
+            playerIds: playerIds,
+            registeredPlayerIds: playerIds,
             guestPlayers: guestPlayers,
             playerIdToUsername: playerIdToUsername,
             usernameToPlayerId: usernameToPlayerId,
@@ -1963,23 +2013,20 @@ async function startRound() {
         };
 
         console.log('Current round registered players:', playerIds);
-        console.log('Current round all players:', allPlayerIds);
         
-        // Create scorecard using display names
-        const allPlayerNames = [...playerIds.map(id => playerIdToUsername[id]), ...guestPlayers.map(name => `${name} (Guest)`)];
-        createScorecard(course, allPlayerNames);
+        // Create scorecard with just the current user
+        createScorecard(course, [currentUsername]);
         document.getElementById('current-course').textContent = course.name;
         document.getElementById('scorecard').style.display = 'block';
 
-        // Add this at the end of the startRound() function, right before the closing } catch block
         // Auto-collapse the new round section to save space
         autoCollapseNewRound();
 
         Swal.fire({
             title: "Round Started!",
-            text: `Started new round at ${course.name}`,
+            text: `Started new round at ${course.name}. You can add other players from the Friends section.`,
             icon: "success",
-            timer: 2000,
+            timer: 3000,
             showConfirmButton: false
         });
 
@@ -2159,6 +2206,121 @@ async function updateHoleDisplay(course, players, holeIndex) {
     });
 }
 
+async function addGuestPlayerToRound() {
+    if (!currentRound) {
+        Swal.fire({
+            icon: "warning",
+            title: "No Active Round",
+            text: "Please start a new round first.",
+        });
+        return;
+    }
+
+    const { value: guestName } = await Swal.fire({
+        title: 'Add Guest Player',
+        input: 'text',
+        inputPlaceholder: 'Enter guest player name',
+        showCancelButton: true,
+        confirmButtonText: 'Add Player',
+        confirmButtonColor: '#3b82f6',
+        cancelButtonColor: '#6c757d',
+        inputValidator: (value) => {
+            if (!value || !value.trim()) {
+                return 'Please enter a player name';
+            }
+            if (value.trim().length < 2) {
+                return 'Name must be at least 2 characters';
+            }
+        }
+    });
+
+    if (!guestName) return;
+
+    const cleanGuestName = guestName.trim();
+    const guestDisplayName = `${cleanGuestName} (Guest)`;
+    const guestId = `guest_${cleanGuestName.replace(/\s+/g, '_').toLowerCase()}`;
+
+    // Check if guest already exists
+    if (currentRound.usernameToPlayerId[guestDisplayName]) {
+        Swal.fire({
+            icon: "info",
+            title: "Guest Already Added",
+            text: `${cleanGuestName} is already in this round.`,
+        });
+        return;
+    }
+
+    try {
+        // Add to current round data
+        currentRound.playerIds.push(guestId);
+        currentRound.guestPlayers.push(cleanGuestName);
+        currentRound.playerIdToUsername[guestId] = guestDisplayName;
+        currentRound.usernameToPlayerId[guestDisplayName] = guestId;
+
+        // Initialize scores for the new guest player
+        const course = coursesData.find(c => c.id == currentRound.courseId);
+        if (course) {
+            const newGuestScores = new Array(course.holes.length).fill(0);
+            currentRound.scores[guestId] = newGuestScores;
+        }
+
+        // Save to database
+        const { error } = await supabase
+            .from('rounds')
+            .update({
+                players: [...currentRound.registeredPlayerIds.map(id => currentRound.playerIdToUsername[id]), ...currentRound.guestPlayers.map(name => `${name} (Guest)`)],
+                player_ids: currentRound.registeredPlayerIds,
+                player_usernames: currentRound.playerIdToUsername,
+                guest_players: currentRound.guestPlayers,
+                scores: currentRound.scores,
+                updated_at: new Date()
+            })
+            .eq('id', currentRound.id);
+
+        if (error) {
+            console.error('Error adding guest player:', error);
+            // Revert changes
+            const guestIndex = currentRound.playerIds.indexOf(guestId);
+            if (guestIndex > -1) {
+                currentRound.playerIds.splice(guestIndex, 1);
+                currentRound.guestPlayers.pop();
+                delete currentRound.scores[guestId];
+                delete currentRound.playerIdToUsername[guestId];
+                delete currentRound.usernameToPlayerId[guestDisplayName];
+            }
+            
+            Swal.fire({
+                icon: "error",
+                title: "Error",
+                text: "Failed to add guest player to the round.",
+            });
+            return;
+        }
+
+        // Recreate the scorecard with updated players
+        if (course) {
+            const allPlayerNames = [...currentRound.registeredPlayerIds.map(id => currentRound.playerIdToUsername[id]), ...currentRound.guestPlayers.map(name => `${name} (Guest)`)];
+            createScorecard(course, allPlayerNames);
+        }
+
+        Swal.fire({
+            title: "Guest Added!",
+            text: `${cleanGuestName} has been added to the round.`,
+            icon: "success",
+            timer: 2000,
+            showConfirmButton: false
+        });
+
+    } catch (error) {
+        console.error('Error adding guest player:', error);
+        Swal.fire({
+            icon: "error",
+            title: "Error",
+            text: "Failed to add guest player.",
+        });
+    }
+}
+
 async function deleteCurrentRound() {
     if (!currentRound) return;
 
@@ -2188,7 +2350,6 @@ async function deleteCurrentRound() {
             currentRound = null;
             document.getElementById('scorecard').style.display = 'none';
             document.getElementById('course').value = '';
-            document.getElementById('players').value = '';
 
             Swal.fire({
                 title: "Round Deleted!",
@@ -2616,7 +2777,6 @@ async function finishRound() {
         
         document.getElementById('scorecard').style.display = 'none';
         document.getElementById('course').value = '';
-        document.getElementById('players').value = 'You';
         
         // Expand new round section after finishing
         if (!isNewRoundExpanded) {
@@ -2702,18 +2862,29 @@ async function loadHistory() {
 
             // Calculate date stats
             const totalRoundsForDate = roundsForDate.length;
-            const scoresForDate = roundsForDate
+            const scoresRelativeToParForDate = roundsForDate
                 .map(round => {
                     if (round.final_scores && currentUsername && round.final_scores[currentUsername] != null) {
-                        return round.final_scores[currentUsername];
+                        const userScore = round.final_scores[currentUsername];
+                        // Find course to get par
+                        const course = coursesData.find(c => c.id == round.course_id);
+                        const par = course ? course.holes.reduce((a, b) => a + b, 0) : 0;
+                        return par > 0 ? userScore - par : null;
                     }
                     return null;
                 })
                 .filter(score => score !== null);
-            
-            const avgScoreForDate = scoresForDate.length > 0 ? 
-                (scoresForDate.reduce((a, b) => a + b, 0) / scoresForDate.length).toFixed(1) : '-';
-            const bestScoreForDate = scoresForDate.length > 0 ? Math.min(...scoresForDate) : '-';
+
+            const avgScoreForDate = scoresRelativeToParForDate.length > 0 ? 
+                (() => {
+                    const avg = (scoresRelativeToParForDate.reduce((a, b) => a + b, 0) / scoresRelativeToParForDate.length);
+                    return avg >= 0 ? `+${avg.toFixed(1)}` : avg.toFixed(1);
+                })() : '-';
+            const bestScoreForDate = scoresRelativeToParForDate.length > 0 ? 
+                (() => {
+                    const best = Math.min(...scoresRelativeToParForDate);
+                    return best >= 0 ? `+${best}` : best.toString();
+                })() : '-';
 
             // Format date for display
             const dateObj = new Date(date + 'T00:00:00');
@@ -2727,12 +2898,7 @@ async function loadHistory() {
             } else if (dateObj.toDateString() === yesterday.toDateString()) {
                 displayDate = 'Yesterday';
             } else {
-                displayDate = dateObj.toLocaleDateString('en-US', { 
-                    weekday: 'long', 
-                    year: 'numeric', 
-                    month: 'long', 
-                    day: 'numeric' 
-                });
+                displayDate = 'Others';
             }
 
             dateGroup.innerHTML = `
@@ -3363,7 +3529,6 @@ async function loadCurrentRound() {
 
                 // Update the players input field
                 const playerUsernames = playerIds.map(id => playerIdToUsername[id]).filter(name => name);
-                document.getElementById('players').value = playerUsernames.join(', ');
 
                 createScorecard(course, playerUsernames);
                 document.getElementById('current-course').textContent = course.name;
@@ -3400,6 +3565,32 @@ async function loadCurrentRound() {
         }
     } catch (error) {
         console.error('Error loading current round:', error);
+    }
+}
+
+// Add this function to script.js
+function adjustHeaderForViewport() {
+    const header = document.querySelector('.header');
+    const subtitle = document.querySelector('.header-text p');
+    const title = document.querySelector('.header-text h1');
+    
+    if (!header || !subtitle || !title) return;
+    
+    const viewportHeight = window.innerHeight;
+    
+    // Remove existing classes
+    header.classList.remove('compact-header', 'minimal-header', 'tiny-header');
+    subtitle.classList.remove('hidden');
+    
+    if (viewportHeight <= 500) {
+        header.classList.add('tiny-header');
+        subtitle.classList.add('hidden');
+    } else if (viewportHeight <= 600) {
+        header.classList.add('minimal-header');
+        subtitle.classList.add('hidden');
+    } else if (viewportHeight <= 700) {
+        header.classList.add('compact-header');
+        subtitle.classList.add('hidden');
     }
 }
 
@@ -4088,8 +4279,9 @@ window.signUp = signUp;
 window.signIn = signIn;
 window.saveProfile = saveProfile;
 window.previewProfilePicture = previewProfilePicture
-
-// Add these to your window exports
+window.loadWeather = loadWeather;
+window.getWeatherDataFree = getWeatherDataFree;
+window.getWeatherEmoji = getWeatherEmoji;
 window.searchUsers = searchUsers;
 window.clearSearchResults = clearSearchResults;
 window.sendFriendRequest = sendFriendRequest;
@@ -4110,6 +4302,7 @@ window.calculateDistance = calculateDistance;
 window.getUserLocation = getUserLocation;
 window.formatDistance = formatDistance;
 window.showLocationStatus = showLocationStatus;
+window.addGuestPlayerToRound = addGuestPlayerToRound;
 
 window.deleteRound = deleteRound;
 window.updateProgress = updateProgress;
@@ -4124,7 +4317,6 @@ window.autoCollapseNewRound = autoCollapseNewRound;
 window.restoreNewRoundState = restoreNewRoundState;
 window.sortCourses = sortCourses;
 window.displayCourses = displayCourses;
-window.toggleSortDirection = toggleSortDirection;
 
 window.addEventListener("DOMContentLoaded", async () => {
     // Check for password reset parameters in both search and hash
@@ -4141,12 +4333,57 @@ window.addEventListener("DOMContentLoaded", async () => {
     if (session) {
         console.log("Restored session:", session.user.email);
         loginSuccessful();
-        await loadProfile();
-        await loadCourses();
+        
+        // Load profile, courses, and weather in parallel
+        await Promise.all([
+            loadProfile(),
+            loadCourses(),
+            loadWeather()
+        ]);
+        
         await loadCurrentRound();
         showSection('new-round');
+        setTimeout(() => {
+            restoreNewRoundState();
+        }, 100);
         
     } else {
         console.log("User is not logged in");
     }
+});
+
+let currentHeaderOpacity = 0.95;
+const fadeStartDistance = 30; // Start fading after 30px
+const fadeCompleteDistance = 70; // Fully transparent at 80px
+
+window.addEventListener("scroll", () => {
+    const currentScroll = window.scrollY;
+    const header = document.getElementById("main-header");
+
+    console.log(`🔄 Scroll: ${Math.round(currentScroll)}px`);
+
+    if (currentScroll < fadeStartDistance) {
+        // Fully visible
+        currentHeaderOpacity = 0.95;
+        console.log(`✅ Fully visible (${currentScroll} < ${fadeStartDistance})`);
+    } else if (currentScroll > fadeCompleteDistance) {
+        // Fully transparent
+        currentHeaderOpacity = 0;
+        console.log(`❌ Fully transparent (${currentScroll} > ${fadeCompleteDistance})`);
+    } else {
+        // Linear fade between start and complete distances
+        const fadeProgress = (currentScroll - fadeStartDistance) / (fadeCompleteDistance - fadeStartDistance);
+        currentHeaderOpacity = 0.95 * (1 - fadeProgress);
+        console.log(`🌫️ Fading: ${fadeProgress.toFixed(2)} progress, opacity: ${currentHeaderOpacity.toFixed(3)}`);
+    }
+
+    // Fade background
+    header.style.backgroundColor = `rgba(255, 255, 255, ${currentHeaderOpacity})`;
+    header.style.backdropFilter = `blur(${currentHeaderOpacity * 12}px)`;
+    
+    // Fade all content inside the header
+    header.style.opacity = currentHeaderOpacity / 0.95; // Normalize to 0-1 range
+    
+    console.log(`📝 Final opacity: ${currentHeaderOpacity.toFixed(3)}, Content opacity: ${(currentHeaderOpacity / 0.95).toFixed(3)}`);
+    console.log(`---`);
 });

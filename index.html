@@ -66,20 +66,27 @@
     <!-- Main App (hidden until logged in) -->
     <div id="main-app" class="min-h-screen bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 p-2 md:p-4 pb-20" style="display: none;">
         <!-- Header -->
-        <header class="rounded-xl bg-white shadow-lg text-white p-6">
-            <div class="flex flex-col md:flex-row items-center justify-between gap-4">
-                <div class="text-center md:text-right">
-                    <h1 class="text-2xl md:text-3xl font-bold flex items-center gap-2 justify-center md:justify-end gradient-text">
-                        <span>🥏 Disc Golf Tracker</span>
-                    </h1>
-                    <p class="text-indigo-200 text-sm">Track your rounds, improve your game,<br>connect with friends</p>
+        <header id="main-header" class="fixed top-0 left-0 right-0 z-40 mx-2 md:mx-4 mt-2 md:mt-4 rounded-xl bg-white/95 backdrop-blur-md shadow-lg text-white p-2 md:p-3 border border-white/20 transition-colors duration-300">
+            <div class="flex flex-row items-center justify-between">
+                <!-- Left side: Title -->
+                <h1 class="text-lg md:text-xl font-bold flex items-center gap-2 gradient-text">
+                    <span>🥏 Disc Golf Tracker</span>
+                </h1>
+
+                <!-- Right side: Weather -->
+                <div id="weather-widget" class="flex items-center hidden gap-2 bg-white/20 backdrop-blur-sm px-2 py-1 rounded-lg border border-gray-300/30 shadow-sm">
+                    <div id="weather-icon" class="text-base"></div>
+                    <div class="text-xs">
+                        <div id="weather-temp" class="font-semibold text-gray-800"></div>
+                        <div id="weather-desc" class="text-xs text-gray-700"></div>
+                    </div>
                 </div>
             </div>
         </header>
 
-        <div class="pt-6">
+        <div class="pt-20 md:pt-24 pb-20">
             <!-- New Round Section -->
-            <div id="new-round" class="section space-y-6">
+            <div id="new-round" class="section space-y-4">
                 <!-- Collapsible Header -->
                 <div class="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
                     <button id="new-round-toggle" onclick="toggleNewRoundSection()" 
@@ -110,10 +117,6 @@
                                 </div>
                                 <!-- Hidden input to store selected course ID -->
                                 <input type="hidden" id="course" />
-                            </div>
-                            <div>
-                                <label for="players" class="block text-sm font-semibold text-gray-700 mb-2">Players (comma-separated)</label>
-                                <input type="text" id="players" placeholder="Enter player names..." value="You" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
                             </div>
                             <button onclick="startRound()" class="w-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white py-3 px-6 rounded-lg font-semibold hover:shadow-lg transform hover:-translate-y-0.5 transition-all duration-200">
                                 Start Round
