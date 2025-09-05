@@ -160,21 +160,67 @@ async function loadCourses() {
         return;
     }
 
+    // Get user location (non-blocking)
+    let userLocation = null;
+    try {
+        userLocation = await getUserLocation();
+    } catch (error) {
+        console.log('Could not get user location, courses will not be sorted by distance');
+    }
+
     const { data, error } = await supabase
         .from("courses")
-        .select("id, name, holes, distances");
+        .select("id, name, holes, distances, coordinates");
     
     if (error) {
         console.error("Error loading courses:", error);
         return [];
     }
 
-    coursesData = data.map(course => ({
-        id: course.id,
-        name: course.name,
-        holes: course.holes.split(',').map(Number),
-        distances: course.distances.split(',').map(Number)
-    }));
+    coursesData = data.map(course => {
+        const courseData = {
+            id: course.id,
+            name: course.name,
+            holes: course.holes.split(',').map(Number),
+            distances: course.distances.split(',').map(Number),
+            coordinates: course.coordinates
+        };
+
+        // Calculate distance if user location is available and course has coordinates
+        if (userLocation && course.coordinates) {
+            try {
+                const [lat, lon] = course.coordinates.split(',').map(Number);
+                courseData.distance = calculateDistance(
+                    userLocation.latitude, 
+                    userLocation.longitude, 
+                    lat, 
+                    lon
+                );
+            } catch (coordError) {
+                console.warn(`Invalid coordinates for course ${course.name}:`, course.coordinates);
+                courseData.distance = null;
+            }
+        } else {
+            courseData.distance = null;
+        }
+
+        return courseData;
+    });
+
+    // Sort courses by distance (closest first), then by name
+    coursesData.sort((a, b) => {
+        // Courses with distance come first
+        if (a.distance !== null && b.distance === null) return -1;
+        if (a.distance === null && b.distance !== null) return 1;
+        
+        // Both have distance - sort by distance
+        if (a.distance !== null && b.distance !== null) {
+            return a.distance - b.distance;
+        }
+        
+        // Neither has distance - sort by name
+        return a.name.localeCompare(b.name);
+    });
 
     coursesCacheTime = Date.now();
 
@@ -191,7 +237,7 @@ async function loadCourses() {
             const courseCard = document.createElement('div');
             courseCard.className = 'course-card p-4 border-2 border-gray-200 rounded-xl cursor-pointer transition-all duration-200 hover:border-indigo-400 hover:shadow-lg hover:-translate-y-1';
             courseCard.onclick = () => selectCourse(course.id, courseCard);
-            
+            showLocationStatus(userLocation !== null);
             courseCard.innerHTML = `
                 <div class="flex items-center justify-between">
                     <div class="flex-1">
@@ -816,6 +862,59 @@ function getCourseEmoji(name) {
     
     // Default disc golf emoji
     return '🥏';
+}
+
+// Calculate distance between two coordinates using Haversine formula
+function calculateDistance(lat1, lon1, lat2, lon2) {
+    const R = 6371; // Earth's radius in kilometers
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = 
+        Math.sin(dLat/2) * Math.sin(dLat/2) +
+        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+        Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    const distance = R * c; // Distance in kilometers
+    return distance;
+}
+
+// Get user's current position
+async function getUserLocation() {
+    return new Promise((resolve, reject) => {
+        if (!navigator.geolocation) {
+            reject(new Error('Geolocation is not supported'));
+            return;
+        }
+        
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                resolve({
+                    latitude: position.coords.latitude,
+                    longitude: position.coords.longitude
+                });
+            },
+            (error) => {
+                console.warn('Geolocation error:', error.message);
+                resolve(null); // Return null instead of rejecting
+            },
+            {
+                enableHighAccuracy: false,
+                timeout: 10000,
+                maximumAge: 300000 // 5 minutes
+            }
+        );
+    });
+}
+
+// Format distance for display
+function formatDistance(distance) {
+    if (distance < 1) {
+        return `${Math.round(distance * 1000)}m`;
+    } else if (distance < 10) {
+        return `${distance.toFixed(1)}km`;
+    } else {
+        return `${Math.round(distance)}km`;
+    }
 }
 
 // Function to handle course selection
@@ -3755,6 +3854,32 @@ async function showNewPasswordForm() {
     }
 }
 
+// Add this function to show location status
+function showLocationStatus(hasLocation) {
+    const courseSelection = document.getElementById("course-selection");
+    if (!courseSelection) return;
+    
+    // Remove existing status message
+    const existingStatus = courseSelection.querySelector('.location-status');
+    if (existingStatus) {
+        existingStatus.remove();
+    }
+    
+    // Add status message
+    const statusDiv = document.createElement('div');
+    statusDiv.className = 'location-status text-sm p-3 mb-4 rounded-lg text-center';
+    
+    if (hasLocation) {
+        statusDiv.className += ' bg-green-50 text-green-700 border border-green-200';
+        statusDiv.innerHTML = '📍 Courses sorted by distance from your location';
+    } else {
+        statusDiv.className += ' bg-amber-50 text-amber-700 border border-amber-200';
+        statusDiv.innerHTML = '📍 Enable location access to see distances to courses';
+    }
+    
+    courseSelection.insertBefore(statusDiv, courseSelection.firstChild);
+}
+
 // Add to window exports
 window.handlePasswordReset = handlePasswordReset;
 
@@ -3789,6 +3914,10 @@ window.updateScore = updateScore;
 window.finishRound = finishRound;
 window.toggleScoreDisplayAndRefresh = toggleScoreDisplayAndRefresh;
 window.updateScorecardDisplay = updateScorecardDisplay;
+window.calculateDistance = calculateDistance;
+window.getUserLocation = getUserLocation;
+window.formatDistance = formatDistance;
+window.showLocationStatus = showLocationStatus;
 
 window.deleteRound = deleteRound;
 window.updateProgress = updateProgress;
