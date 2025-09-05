@@ -577,13 +577,152 @@ function toggleScoreDisplayAndRefresh(checkbox, roundId, itemId) {
         label.textContent = showScoreDifference ? '±Par' : 'Total';
     });
     
-    // Refresh just this scorecard
-    loadRoundScorecard(roundId, itemId);
-    
-    // Also refresh history if it's active
-    const historySection = document.getElementById('history');
-    if (historySection && historySection.classList.contains('active')) {
-        loadHistory();
+    // Instead of reloading the entire scorecard, just update the current one
+    updateScorecardDisplay(roundId, itemId);
+}
+
+// Function to update just the scorecard display without reloading content
+async function updateScorecardDisplay(roundId, itemId) {
+    try {
+        const { data: round, error } = await supabase
+            .from('rounds')
+            .select('*')
+            .eq('id', roundId)
+            .single();
+
+        if (error || !round) {
+            console.error('Error loading round for display update:', error);
+            return;
+        }
+
+        // Find course to get par info
+        const course = coursesData.find(c => c.id == round.course_id);
+        if (!course) {
+            console.error('Course not found for round');
+            return;
+        }
+
+        const totalPar = course.holes.reduce((a, b) => a + b, 0);
+        const useNewFormat = round.player_ids && round.player_usernames && round.scores;
+        let displayPlayers = [];
+        
+        if (useNewFormat) {
+            displayPlayers = round.player_ids.map(id => round.player_usernames[id] || `User_${id.substring(0, 8)}`);
+            if (round.guest_players && round.guest_players.length > 0) {
+                displayPlayers = [...displayPlayers, ...round.guest_players.map(name => `${name} (Guest)`)];
+            }
+        } else {
+            displayPlayers = round.players;
+        }
+
+        // Update hole scores in the table
+        for (let holeIndex = 0; holeIndex < course.holes.length; holeIndex++) {
+            const holePar = course.holes[holeIndex];
+            
+            displayPlayers.forEach((player, playerIndex) => {
+                let score;
+                let playerId;
+                
+                if (useNewFormat) {
+                    if (playerIndex < round.player_ids.length) {
+                        // Registered player
+                        playerId = round.player_ids[playerIndex];
+                        score = round.scores[playerId]?.[holeIndex] || '-';
+                    } else {
+                        // Guest player
+                        const guestIndex = playerIndex - round.player_ids.length;
+                        const guestName = round.guest_players[guestIndex];
+                        const guestId = `guest_${guestName.replace(/\s+/g, '_').toLowerCase()}`;
+                        score = round.scores[guestId]?.[holeIndex] || '-';
+                    }
+                } else {
+                    if (player.includes('(Guest)')) {
+                        const baseName = player.replace(' (Guest)', '');
+                        const guestId = `guest_${baseName.replace(/\s+/g, '_').toLowerCase()}`;
+                        score = round.scores[guestId]?.[holeIndex] || '-';
+                    } else {
+                        score = round.scores[player]?.[holeIndex] || '-';
+                    }
+                }
+
+                // Find the cell and update it
+                const table = document.querySelector(`#round-content-${itemId} table`);
+                if (table) {
+                    const row = table.rows[holeIndex + 1]; // +1 to skip header
+                    if (row) {
+                        const cell = row.cells[playerIndex + 1]; // +1 to skip hole number column
+                        if (cell && score !== '-' && score > 0) {
+                            const scoreDiff = score - holePar;
+                            let displayScore, cellClass;
+                            
+                            if (showScoreDifference) {
+                                displayScore = scoreDiff === 0 ? 'E' : scoreDiff > 0 ? `+${scoreDiff}` : `${scoreDiff}`;
+                            } else {
+                                displayScore = score;
+                            }
+                            
+                            cellClass = scoreDiff <= -2 ? 'text-emerald-600 font-bold bg-emerald-50' :
+                                       scoreDiff == -1 ? 'text-green-600 font-bold bg-green-50' :
+                                       scoreDiff == 0  ? 'text-blue-600 font-bold' :
+                                       scoreDiff == 1  ? 'text-amber-600 font-bold' :
+                                       scoreDiff == 2  ? 'text-orange-600 font-bold bg-orange-50' :
+                                       scoreDiff >= 3  ? 'text-red-600 font-bold bg-red-50' :
+                                       'text-gray-800';
+                            
+                            // Update cell content and styling
+                            cell.textContent = displayScore;
+                            cell.className = `border border-gray-300 p-2 text-center ${cellClass}`;
+                        }
+                    }
+                }
+            });
+        }
+
+        // Update totals row
+        const table = document.querySelector(`#round-content-${itemId} table`);
+        if (table) {
+            const totalsRow = table.rows[table.rows.length - 1];
+            
+            displayPlayers.forEach((player, playerIndex) => {
+                let total;
+                
+                if (useNewFormat) {
+                    if (playerIndex < round.player_ids.length) {
+                        const username = round.player_usernames[round.player_ids[playerIndex]];
+                        total = round.final_scores?.[username] || '-';
+                    } else {
+                        const guestIndex = playerIndex - round.player_ids.length;
+                        const guestName = round.guest_players[guestIndex];
+                        const guestDisplayName = `${guestName} (Guest)`;
+                        total = round.final_scores?.[guestDisplayName] || '-';
+                    }
+                } else {
+                    total = round.final_scores?.[player] || '-';
+                }
+                
+                const cell = totalsRow.cells[playerIndex + 1]; // +1 to skip hole number column
+                if (cell && total !== '-' && total > 0) {
+                    const totalDiff = total - totalPar;
+                    let displayTotal, cellClass;
+                    
+                    if (showScoreDifference) {
+                        displayTotal = totalDiff === 0 ? 'E' : totalDiff > 0 ? `+${totalDiff}` : `${totalDiff}`;
+                    } else {
+                        displayTotal = total;
+                    }
+                    
+                    cellClass = totalDiff < 0 ? 'text-green-600' : 
+                               totalDiff > 0 ? 'text-red-600' : 
+                               'text-gray-800';
+                    
+                    cell.textContent = displayTotal;
+                    cell.className = `border border-gray-300 p-2 text-center ${cellClass}`;
+                }
+            });
+        }
+
+    } catch (error) {
+        console.error('Error updating scorecard display:', error);
     }
 }
 
@@ -3649,7 +3788,7 @@ window.startRound = startRound;
 window.updateScore = updateScore;
 window.finishRound = finishRound;
 window.toggleScoreDisplayAndRefresh = toggleScoreDisplayAndRefresh;
-
+window.updateScorecardDisplay = updateScorecardDisplay;
 
 window.deleteRound = deleteRound;
 window.updateProgress = updateProgress;
