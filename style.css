@@ -981,3 +981,92 @@ select#course-sort {
 #main-header {
     transition: background-color 0.2s ease-out, backdrop-filter 0.2s ease-out;
 }
+
+/* Replace the existing grid styles with more compact ones */
+.progress-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 24px;
+}
+
+@media (min-width: 768px) {
+    .progress-stats-grid {
+        grid-template-columns: repeat(4, 1fr);
+        gap: 16px;
+    }
+}
+
+.progress-stat-card {
+    background: linear-gradient(135deg, var(--gradient-from), var(--gradient-to));
+    color: white;
+    padding: 16px 12px;
+    border-radius: 12px;
+    text-align: center;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.progress-stat-number {
+    font-size: 1.5rem;
+    font-weight: bold;
+    margin-bottom: 4px;
+    line-height: 1;
+}
+
+.progress-stat-label {
+    font-size: 11px;
+    opacity: 0.9;
+    line-height: 1.2;
+}
+
+@media (max-width: 640px) {
+    .progress-stat-card {
+        padding: 12px 8px;
+    }
+    
+    .progress-stat-number {
+        font-size: 1.25rem;
+    }
+    
+    .progress-stat-label {
+        font-size: 10px;
+    }
+}
+
+/* Override SweetAlert2 padding for friend profile modal */
+.swal2-html-container {
+    padding-left: 8px !important;
+    padding-right: 8px !important;
+}
+
+/* Fix login screen positioning and scrolling */
+.login-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    overflow: hidden; /* Prevent scrolling */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 20px;
+    box-sizing: border-box;
+}
+
+/* Ensure login card is properly sized */
+.login-card {
+    margin: 0;
+    max-height: calc(100vh - 40px);
+    overflow-y: auto; /* Allow scrolling within card if needed on very small screens */
+    width: 100%;
+    max-width: 400px; /* Maintain the max width */
+}
+
+/* Prevent body scrolling when on login screen */
+body.login-active {
+    overflow: hidden;
+    position: fixed;
+    width: 100%;
+    height: 100%;
+}

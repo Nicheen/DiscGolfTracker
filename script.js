@@ -384,11 +384,11 @@ async function loadCourses() {
     // Update the course selection UI - replace the existing courseSelection.innerHTML = '' section with:
     const courseSelection = document.getElementById("course-selection");
     const distanceElement = document.getElementById("distance-tracker");
+
     if (courseSelection) {
         distanceElement.innerHTML = `
             <div class="flex items-center justify-between w-full">
                 <div class="flex items-center gap-1">
-                    <span class="text-2xl">🥏</span>
                     <div class="flex items-center gap-2">
                         <h2 class="text-xl font-bold text-gray-800">New Round</h2>
                         ${userLocation ? 
@@ -654,28 +654,37 @@ async function loadRoundScorecard(roundId, itemId) {
             scorecardHTML += `<td class="border border-gray-300 p-2 text-center font-bold text-blue-600 bg-blue-50">${course.holes[i]}</td></tr>`;
         }
 
-        // Totals row
+        // Totals row - Replace the existing totals calculation with this:
         scorecardHTML += '<tr class="bg-gray-300 font-bold border-t-2 border-gray-400"><td class="border border-gray-300 p-2 text-center sticky left-0 bg-gray-300 z-10">Total</td>';
 
-        const totalPar = course.holes.reduce((a, b) => a + b, 0);
-
+        // Calculate totals only for played holes
         if (useNewFormat) {
             // Totals for registered players
             round.player_ids.forEach(playerId => {
                 const username = round.player_usernames[playerId];
-                const total = round.final_scores?.[username] || '-';
-                let displayTotal, cellClass;
+                let playerTotal = 0;
+                let playerParTotal = 0;
                 
-                if (total !== '-' && total > 0) {
-                    const totalDiff = total - totalPar;
+                // Only count holes that were actually played (score > 0)
+                for (let i = 0; i < course.holes.length; i++) {
+                    const score = round.scores[playerId]?.[i] || 0;
+                    if (score > 0) {
+                        playerTotal += score;
+                        playerParTotal += course.holes[i];
+                    }
+                }
+                
+                let displayTotal, cellClass;
+                if (playerTotal > 0) {
+                    const totalDiff = playerTotal - playerParTotal;
                     if (showScoreDifference) {
                         displayTotal = totalDiff === 0 ? 'E' : totalDiff > 0 ? `+${totalDiff}` : `${totalDiff}`;
                     } else {
-                        displayTotal = total;
+                        displayTotal = playerTotal;
                     }
                     cellClass = totalDiff < 0 ? 'text-green-600' : 
-                               totalDiff > 0 ? 'text-red-600' : 
-                               'text-gray-800';
+                            totalDiff > 0 ? 'text-red-600' : 
+                            'text-gray-800';
                 } else {
                     displayTotal = '-';
                     cellClass = 'text-gray-400';
@@ -687,20 +696,30 @@ async function loadRoundScorecard(roundId, itemId) {
             // Totals for guest players
             if (round.guest_players && round.guest_players.length > 0) {
                 round.guest_players.forEach(guestName => {
-                    const guestDisplayName = `${guestName} (Guest)`;
-                    const total = round.final_scores?.[guestDisplayName] || '-';
-                    let displayTotal, cellClass;
+                    const guestId = `guest_${guestName.replace(/\s+/g, '_').toLowerCase()}`;
+                    let playerTotal = 0;
+                    let playerParTotal = 0;
                     
-                    if (total !== '-' && total > 0) {
-                        const totalDiff = total - totalPar;
+                    // Only count holes that were actually played (score > 0)
+                    for (let i = 0; i < course.holes.length; i++) {
+                        const score = round.scores[guestId]?.[i] || 0;
+                        if (score > 0) {
+                            playerTotal += score;
+                            playerParTotal += course.holes[i];
+                        }
+                    }
+                    
+                    let displayTotal, cellClass;
+                    if (playerTotal > 0) {
+                        const totalDiff = playerTotal - playerParTotal;
                         if (showScoreDifference) {
                             displayTotal = totalDiff === 0 ? 'E' : totalDiff > 0 ? `+${totalDiff}` : `${totalDiff}`;
                         } else {
-                            displayTotal = total;
+                            displayTotal = playerTotal;
                         }
                         cellClass = totalDiff < 0 ? 'text-green-600' : 
-                                   totalDiff > 0 ? 'text-red-600' : 
-                                   'text-gray-800';
+                                totalDiff > 0 ? 'text-red-600' : 
+                                'text-gray-800';
                     } else {
                         displayTotal = '-';
                         cellClass = 'text-gray-400';
@@ -710,20 +729,39 @@ async function loadRoundScorecard(roundId, itemId) {
                 });
             }
         } else {
+            // Old format totals
             displayPlayers.forEach(player => {
-                const total = round.final_scores?.[player] || '-';
-                let displayTotal, cellClass;
+                let playerTotal = 0;
+                let playerParTotal = 0;
                 
-                if (total !== '-' && total > 0) {
-                    const totalDiff = total - totalPar;
+                // Only count holes that were actually played (score > 0)
+                for (let i = 0; i < course.holes.length; i++) {
+                    let score = 0;
+                    if (player.includes('(Guest)')) {
+                        const baseName = player.replace(' (Guest)', '');
+                        const guestId = `guest_${baseName.replace(/\s+/g, '_').toLowerCase()}`;
+                        score = round.scores[guestId]?.[i] || 0;
+                    } else {
+                        score = round.scores[player]?.[i] || 0;
+                    }
+                    
+                    if (score > 0) {
+                        playerTotal += score;
+                        playerParTotal += course.holes[i];
+                    }
+                }
+                
+                let displayTotal, cellClass;
+                if (playerTotal > 0) {
+                    const totalDiff = playerTotal - playerParTotal;
                     if (showScoreDifference) {
                         displayTotal = totalDiff === 0 ? 'E' : totalDiff > 0 ? `+${totalDiff}` : `${totalDiff}`;
                     } else {
-                        displayTotal = total;
+                        displayTotal = playerTotal;
                     }
                     cellClass = totalDiff < 0 ? 'text-green-600' : 
-                               totalDiff > 0 ? 'text-red-600' : 
-                               'text-gray-800';
+                            totalDiff > 0 ? 'text-red-600' : 
+                            'text-gray-800';
                 } else {
                     displayTotal = '-';
                     cellClass = 'text-gray-400';
@@ -733,7 +771,41 @@ async function loadRoundScorecard(roundId, itemId) {
             });
         }
 
-        scorecardHTML += `<td class="border border-gray-300 p-2 text-center font-bold text-blue-600 bg-blue-100">${totalPar}</td></tr>`;
+        // Show "Played Par" instead of total course par
+        let totalPlayedPar = 0;
+        for (let i = 0; i < course.holes.length; i++) {
+            // Check if ANY player played this hole
+            let holeWasPlayed = false;
+            if (useNewFormat) {
+                round.player_ids.forEach(playerId => {
+                    if (round.scores[playerId]?.[i] > 0) holeWasPlayed = true;
+                });
+                if (round.guest_players) {
+                    round.guest_players.forEach(guestName => {
+                        const guestId = `guest_${guestName.replace(/\s+/g, '_').toLowerCase()}`;
+                        if (round.scores[guestId]?.[i] > 0) holeWasPlayed = true;
+                    });
+                }
+            } else {
+                displayPlayers.forEach(player => {
+                    let score = 0;
+                    if (player.includes('(Guest)')) {
+                        const baseName = player.replace(' (Guest)', '');
+                        const guestId = `guest_${baseName.replace(/\s+/g, '_').toLowerCase()}`;
+                        score = round.scores[guestId]?.[i] || 0;
+                    } else {
+                        score = round.scores[player]?.[i] || 0;
+                    }
+                    if (score > 0) holeWasPlayed = true;
+                });
+            }
+            
+            if (holeWasPlayed) {
+                totalPlayedPar += course.holes[i];
+            }
+        }
+
+        scorecardHTML += `<td class="border border-gray-300 p-2 text-center font-bold text-blue-600 bg-blue-100">${totalPlayedPar}</td></tr>`;
         scorecardHTML += '</tbody></table></div>';
 
         // Action buttons with better spacing
@@ -805,7 +877,6 @@ async function updateScorecardDisplay(roundId, itemId) {
             return;
         }
 
-        const totalPar = course.holes.reduce((a, b) => a + b, 0);
         const useNewFormat = round.player_ids && round.player_usernames && round.scores;
         let displayPlayers = [];
         
@@ -881,37 +952,65 @@ async function updateScorecardDisplay(roundId, itemId) {
             });
         }
 
-        // Update totals row
+        // Update totals row with PLAYED PAR calculation
         const table = document.querySelector(`#round-content-${itemId} table`);
         if (table) {
             const totalsRow = table.rows[table.rows.length - 1];
             
             displayPlayers.forEach((player, playerIndex) => {
-                let total;
+                // Calculate this player's total and played par
+                let playerTotal = 0;
+                let playerPlayedPar = 0;
                 
                 if (useNewFormat) {
                     if (playerIndex < round.player_ids.length) {
-                        const username = round.player_usernames[round.player_ids[playerIndex]];
-                        total = round.final_scores?.[username] || '-';
+                        const playerId = round.player_ids[playerIndex];
+                        for (let i = 0; i < course.holes.length; i++) {
+                            const score = round.scores[playerId]?.[i] || 0;
+                            if (score > 0) {
+                                playerTotal += score;
+                                playerPlayedPar += course.holes[i];
+                            }
+                        }
                     } else {
                         const guestIndex = playerIndex - round.player_ids.length;
                         const guestName = round.guest_players[guestIndex];
-                        const guestDisplayName = `${guestName} (Guest)`;
-                        total = round.final_scores?.[guestDisplayName] || '-';
+                        const guestId = `guest_${guestName.replace(/\s+/g, '_').toLowerCase()}`;
+                        for (let i = 0; i < course.holes.length; i++) {
+                            const score = round.scores[guestId]?.[i] || 0;
+                            if (score > 0) {
+                                playerTotal += score;
+                                playerPlayedPar += course.holes[i];
+                            }
+                        }
                     }
                 } else {
-                    total = round.final_scores?.[player] || '-';
+                    for (let i = 0; i < course.holes.length; i++) {
+                        let score = 0;
+                        if (player.includes('(Guest)')) {
+                            const baseName = player.replace(' (Guest)', '');
+                            const guestId = `guest_${baseName.replace(/\s+/g, '_').toLowerCase()}`;
+                            score = round.scores[guestId]?.[i] || 0;
+                        } else {
+                            score = round.scores[player]?.[i] || 0;
+                        }
+                        
+                        if (score > 0) {
+                            playerTotal += score;
+                            playerPlayedPar += course.holes[i];
+                        }
+                    }
                 }
                 
                 const cell = totalsRow.cells[playerIndex + 1]; // +1 to skip hole number column
-                if (cell && total !== '-' && total > 0) {
-                    const totalDiff = total - totalPar;
+                if (cell && playerTotal > 0) {
+                    const totalDiff = playerTotal - playerPlayedPar; // Use played par here!
                     let displayTotal, cellClass;
                     
                     if (showScoreDifference) {
                         displayTotal = totalDiff === 0 ? 'E' : totalDiff > 0 ? `+${totalDiff}` : `${totalDiff}`;
                     } else {
-                        displayTotal = total;
+                        displayTotal = playerTotal;
                     }
                     
                     cellClass = totalDiff < 0 ? 'text-green-600' : 
@@ -920,6 +1019,9 @@ async function updateScorecardDisplay(roundId, itemId) {
                     
                     cell.textContent = displayTotal;
                     cell.className = `border border-gray-300 p-2 text-center ${cellClass}`;
+                } else if (cell) {
+                    cell.textContent = '-';
+                    cell.className = 'border border-gray-300 p-2 text-center text-gray-400';
                 }
             });
         }
@@ -1214,8 +1316,7 @@ async function loadFriends() {
         if (!friendships || friendships.length === 0) {
             container.innerHTML = `
                 <div style="text-align: center; color: #6c757d; margin: 40px 0;">
-                    <p>No friends added yet.</p>
-                    <p>Add friends by their username to track their progress!</p>
+                    <p>Add friends by their username to track their progress and add them to your rounds!</p>
                 </div>
             `;
             return;
@@ -1331,7 +1432,43 @@ async function showFriendDetails(friend, stats) {
         }
 
         const rounds = friendRounds || [];
-        const recentRounds = rounds.slice(0, 5);
+
+        // Calculate detailed stats like in updateProgress
+        let totalRounds = 0;
+        let totalThrows = 0;
+        let scoresToPar = [];
+        let validRounds = [];
+
+        rounds.forEach(round => {
+            if (round.final_scores && friend.username && round.final_scores[friend.username] != null) {
+                const score = round.final_scores[friend.username];
+                
+                // Find course to get par
+                const course = coursesData.find(c => c.id == round.course_id);
+                const par = course ? course.holes.reduce((a, b) => a + b, 0) : 0;
+                
+                if (par > 0 && score > 0) {
+                    totalRounds++;
+                    totalThrows += score;
+                    scoresToPar.push(score - par);
+                    validRounds.push({ score, par, scoreToPar: score - par });
+                }
+            }
+        });
+
+        // Calculate stats
+        const avgScore = scoresToPar.length > 0 ? 
+            (scoresToPar.reduce((a, b) => a + b, 0) / scoresToPar.length).toFixed(1) : '-';
+        const bestScore = validRounds.length > 0 ? 
+            Math.min(...scoresToPar) : '-';
+
+        // Format displays
+        const avgScoreDisplay = avgScore === '-' ? '-' : 
+            (avgScore == 0 ? 'E' : (avgScore > 0 ? `+${avgScore}` : avgScore));
+        const bestScoreDisplay = bestScore === '-' ? '-' : 
+            (bestScore == 0 ? 'E' : (bestScore > 0 ? `+${bestScore}` : bestScore));
+
+        const recentRounds = rounds.slice(0, 3);
 
         let recentRoundsHTML = '';
         if (recentRounds.length > 0) {
@@ -1379,33 +1516,26 @@ async function showFriendDetails(friend, stats) {
                         </div>
                     </div>
                     
-                    <div class="grid grid-cols-3 gap-4 mb-6">
+                    <div class="grid grid-cols-4 gap-3 mb-6">
                         <div class="text-center p-3 bg-indigo-50 rounded-lg">
-                            <div class="text-2xl font-bold text-indigo-600">${stats.totalRounds}</div>
-                            <div class="text-xs text-gray-600">Total Rounds</div>
-                        </div>
-                        <div class="text-center p-3 bg-green-50 rounded-lg">
-                            <div class="text-2xl font-bold text-green-600">${stats.avgScore}</div>
-                            <div class="text-xs text-gray-600">Average Score</div>
+                            <div class="text-[10px] font-bold text-indigo-600">${totalRounds}</div>
+                            <div class="text-[10px] text-gray-600 leading-tight">Total<br>Rounds</div>
                         </div>
                         <div class="text-center p-3 bg-orange-50 rounded-lg">
-                            <div class="text-2xl font-bold text-orange-600">${stats.bestScore}</div>
-                            <div class="text-xs text-gray-600">Best Score</div>
+                            <div class="text-[10px] font-bold text-orange-600">${totalThrows.toLocaleString()}</div>
+                            <div class="text-[10px] text-gray-600 leading-tight">Total<br>Throws</div>
+                        </div>
+                        <div class="text-center p-3 bg-green-50 rounded-lg">
+                            <div class="text-[10px] font-bold text-green-600">${avgScoreDisplay}</div>
+                            <div class="text-[10px] text-gray-600 leading-tight">Average<br>Score</div>
+                        </div>
+                        <div class="text-center p-3 bg-purple-50 rounded-lg">
+                            <div class="text-[10px] font-bold text-purple-600">${bestScoreDisplay}</div>
+                            <div class="text-[10px] text-gray-600 leading-tight">Best<br>Round</div>
                         </div>
                     </div>
-                    
+                                        
                     ${recentRoundsHTML}
-                    
-                    <div class="flex space-x-3 mt-6 pt-4 border-t">
-                        <button onclick="addFriendToRound('${friend.username}'); Swal.close()" 
-                            class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-2 px-4 rounded-lg font-medium transition-colors duration-200">
-                            Invite to Round
-                        </button>
-                        <button onclick="removeFriend('${friend.id}', '${friend.username}');" 
-                            class="bg-red-500 hover:bg-red-600 text-white py-2 px-4 rounded-lg font-medium transition-colors duration-200">
-                            Remove Friend
-                        </button>
-                    </div>
                 </div>
             `,
             showConfirmButton: false,
@@ -1650,16 +1780,20 @@ async function searchUsers() {
                     const isAlreadyFriend = friendIds.has(profile.id);
                     
                     resultItem.innerHTML = `
-                        <div>
-                            <strong>${profile.username}</strong>
-                            <div style="font-size: 0.9em; color: #6c757d;">${profile.bio || 'No bio'}</div>
-                        </div>
-                        <div>
-                            ${isAlreadyFriend 
-                                ? '<span style="color: #28a745; font-weight: bold;">✓ Friends</span>'
-                                : `<button class="btn" onclick="sendFriendRequest('${profile.id}', '${profile.username}')" 
-                                          style="padding: 5px 10px; font-size: 0.9em;">Add Friend</button>`
-                            }
+                        <div class="flex items-center justify-between w-full">
+                            <div class="flex-1 min-w-0">
+                                <div class="font-semibold text-gray-800">${profile.username}</div>
+                                <div class="text-sm text-gray-600 truncate">${profile.bio || 'No bio'}</div>
+                            </div>
+                            <div class="ml-3 flex-shrink-0">
+                                ${isAlreadyFriend 
+                                    ? '<span class="text-green-600 font-semibold text-sm">✓ Friends</span>'
+                                    : `<button class="btn bg-indigo-600 hover:bg-indigo-700 text-white text-sm py-2 px-3 rounded-lg font-medium transition-colors duration-200" 
+                                            onclick="sendFriendRequest('${profile.id}', '${profile.username}')">
+                                        Add Friend
+                                    </button>`
+                                }
+                            </div>
                         </div>
                     `;
                     
@@ -1877,7 +2011,82 @@ function clearSearchResults() {
     }
 }
 
+function showCanvasConfetti() {
+    const canvas = document.createElement('canvas');
+    canvas.style.position = 'fixed';
+    canvas.style.top = '0';
+    canvas.style.left = '0';
+    canvas.style.width = '100%';
+    canvas.style.height = '100%';
+    canvas.style.pointerEvents = 'none';
+    canvas.style.zIndex = '9999';
+    document.body.appendChild(canvas);
+
+    const ctx = canvas.getContext('2d');
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    const confetti = [];
+    const colors = ['#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', '#ffd93d', '#ff8a80', '#c7ecee'];
+
+    // Create confetti particles
+    for (let i = 0; i < 100; i++) {
+        confetti.push({
+            x: Math.random() * canvas.width,
+            y: -10,
+            vx: (Math.random() - 0.5) * 4,
+            vy: Math.random() * 3 + 2,
+            color: colors[Math.floor(Math.random() * colors.length)],
+            size: Math.random() * 8 + 4,
+            rotation: Math.random() * 360,
+            rotationSpeed: (Math.random() - 0.5) * 10
+        });
+    }
+
+    function updateConfetti() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        for (let i = confetti.length - 1; i >= 0; i--) {
+            const particle = confetti[i];
+            
+            // Update position
+            particle.x += particle.vx;
+            particle.y += particle.vy;
+            particle.rotation += particle.rotationSpeed;
+            
+            // Add gravity
+            particle.vy += 0.1;
+
+            // Draw particle
+            ctx.save();
+            ctx.translate(particle.x, particle.y);
+            ctx.rotate(particle.rotation * Math.PI / 180);
+            ctx.fillStyle = particle.color;
+            ctx.fillRect(-particle.size/2, -particle.size/2, particle.size, particle.size);
+            ctx.restore();
+
+            // Remove particles that are off screen
+            if (particle.y > canvas.height + 10) {
+                confetti.splice(i, 1);
+            }
+        }
+
+        if (confetti.length > 0) {
+            requestAnimationFrame(updateConfetti);
+        } else {
+            document.body.removeChild(canvas);
+        }
+    }
+
+    updateConfetti();
+}
+
 function showSection(sectionId) {
+    if (isAppLoading && sectionId !== 'new-round') {
+        console.log('App still loading, blocking navigation to:', sectionId);
+        return;
+    }
+
     // Hide all sections
     document.querySelectorAll('.section').forEach(s => {
         s.classList.remove('active');
@@ -2163,6 +2372,7 @@ async function updateHoleDisplay(course, players, holeIndex) {
         const playerId = currentRound.usernameToPlayerId[player];
         const currentScore = currentRound && currentRound.scores[playerId] ? 
             currentRound.scores[playerId][holeIndex] : 0;
+        // In updateHoleDisplay, when creating player cards, make sure this line shows "-" for 0 scores:
         const displayScore = currentScore > 0 ? currentScore : '-';
         const scoreDiff = currentScore > 0 ? currentScore - par : 0;
         const scoreText = scoreDiff === 0 ? 'E' : scoreDiff > 0 ? `+${scoreDiff}` : scoreDiff.toString();
@@ -2523,13 +2733,15 @@ async function updateScore(player, holeIndex, change) {
     // Calculate new score
     let newScore;
     if (currentScore === 0 || currentScore === '') {
+        // If hole hasn't been played, start from par + change
         newScore = par + change;
     } else {
+        // If hole has been played, modify existing score
         newScore = parseInt(currentScore) + change;
     }
 
-    // Ensure score stays within reasonable bounds
-    if (newScore < 1) newScore = 1;
+    // Ensure score stays within reasonable bounds (but allow going back to 0 to "unplay" a hole)
+    if (newScore < 0) newScore = 0; // Allow 0 to represent "unplayed"
     if (newScore > 10) newScore = 10;
 
     // Update local state
@@ -2540,18 +2752,29 @@ async function updateScore(player, holeIndex, change) {
     // Update display (still use username for UI)
     const scoreElement = document.getElementById(`score-${player}-${holeIndex}`);
     if (scoreElement) {
-        scoreElement.textContent = newScore;
+        scoreElement.textContent = newScore > 0 ? newScore : '-';
     }
 
     // Update the player's score difference display
-    const scoreDiff = newScore - par;
-    const scoreText = scoreDiff === 0 ? 'E' : scoreDiff > 0 ? `+${scoreDiff}` : scoreDiff.toString();
-    
-    const playerCard = scoreElement.closest('.bg-white');
-    if (playerCard) {
-        const scoreInfo = playerCard.querySelector('.text-sm.text-gray-600');
-        if (scoreInfo) {
-            scoreInfo.textContent = `${scoreText} (${newScore})`;
+    if (newScore > 0) {
+        const scoreDiff = newScore - par;
+        const scoreText = scoreDiff === 0 ? 'E' : scoreDiff > 0 ? `+${scoreDiff}` : scoreDiff.toString();
+        
+        const playerCard = scoreElement.closest('.bg-white');
+        if (playerCard) {
+            const scoreInfo = playerCard.querySelector('.text-sm.text-gray-600');
+            if (scoreInfo) {
+                scoreInfo.textContent = `${scoreText} (${newScore})`;
+            }
+        }
+    } else {
+        // If score is 0 (unplayed), show different display
+        const playerCard = scoreElement.closest('.bg-white');
+        if (playerCard) {
+            const scoreInfo = playerCard.querySelector('.text-sm.text-gray-600');
+            if (scoreInfo) {
+                scoreInfo.textContent = `Skipped`;
+            }
         }
     }
 
@@ -2602,13 +2825,19 @@ function updateTotals() {
     
     Object.keys(currentRound.scores).forEach(playerId => {
         const scores = currentRound.scores[playerId];
-        const total = scores.reduce((sum, score) => sum + (parseInt(score) || 0), 0);
         const username = currentRound.playerIdToUsername[playerId];
         const totalElement = document.getElementById(`total-${username.replace(/\s+/g, '-')}`);
         
         if (totalElement) {
-            if (total > 0) {
-                const scoreToPar = total - totalPar;
+            // Only count holes that have been played (score > 0)
+            const playedHoles = scores.filter(score => score && score > 0);
+            const playedHolesPar = playedHoles.length > 0 ? 
+                scores.map((score, index) => score && score > 0 ? course.holes[index] : 0)
+                     .reduce((sum, par) => sum + par, 0) : 0;
+            
+            if (playedHoles.length > 0) {
+                const total = playedHoles.reduce((sum, score) => sum + score, 0);
+                const scoreToPar = total - playedHolesPar;
                 const scoreToParText = scoreToPar === 0 ? 'E' : 
                                      scoreToPar > 0 ? `+${scoreToPar}` : 
                                      scoreToPar.toString();
@@ -2616,7 +2845,6 @@ function updateTotals() {
                 totalElement.textContent = `${total} (${scoreToParText})`;
             } else {
                 totalElement.textContent = '-';
-                totalElement.className = 'text-lg font-bold';
             }
         }
     });
@@ -2685,15 +2913,20 @@ async function finishRound() {
     try {
         // Calculate final scores - include both registered users and guests
         const finalScoresByUsername = {};
-        
+
         Object.keys(currentRound.scores).forEach(playerId => {
             const scores = currentRound.scores[playerId];
-            const totalScore = scores.reduce((sum, score) => sum + (parseInt(score) || 0), 0);
-            
-            // Get username for this player ID
             const username = currentRound.playerIdToUsername[playerId];
+            
             if (username) {
-                finalScoresByUsername[username] = totalScore;
+                // Only count holes that have been played (score > 0)
+                const playedScores = scores.filter(score => score && score > 0);
+                
+                if (playedScores.length > 0) {
+                    const totalScore = playedScores.reduce((sum, score) => sum + score, 0);
+                    finalScoresByUsername[username] = totalScore;
+                }
+                // Don't save anything if no holes were played - this prevents 0 scores
             }
         });
 
@@ -2767,6 +3000,7 @@ async function finishRound() {
         // Clear current round
         currentRound = null;
 
+        // Find this section in your finishRound function:
         Swal.fire({
             title: "Round Completed!",
             text: 'Your round has been saved successfully for all players.',
@@ -2774,6 +3008,8 @@ async function finishRound() {
             timer: 3000,
             showConfirmButton: false
         });
+
+        showCanvasConfetti(); // For canvas version
         
         document.getElementById('scorecard').style.display = 'none';
         document.getElementById('course').value = '';
@@ -2948,7 +3184,18 @@ async function loadHistory() {
 function createRoundItem(round, itemId, currentUsername, userId) {
     // Find course data for par calculation
     const course = coursesData.find(c => c.id == round.course_id);
-    const par = course ? course.holes.reduce((a, b) => a + b, 0) : 0;
+
+    // Calculate played par instead of total course par
+    let playedPar = 0;
+    const userScores = getUserHoleScores(round, userId, currentUsername);
+    
+    if (course && userScores && userScores.length > 0) {
+        userScores.forEach((holeScore, index) => {
+            if (holeScore > 0 && index < course.holes.length) {
+                playedPar += course.holes[index];
+            }
+        });
+    }
     
     // Get current user's score
     let yourScore = 0;
@@ -2958,8 +3205,8 @@ function createRoundItem(round, itemId, currentUsername, userId) {
         yourScore = round.final_scores[currentUsername];
     }
 
-    // Calculate score difference text
-    const scoreDiff = yourScore > 0 && par > 0 ? yourScore - par : null;
+    // Calculate score difference text using played par
+    const scoreDiff = yourScore > 0 && playedPar > 0 ? yourScore - playedPar : null;
     const scoreDiffText = scoreDiff === null ? '' : 
         scoreDiff > 0 ? `+${scoreDiff}` : 
         scoreDiff === 0 ? 'E' : 
@@ -3000,29 +3247,33 @@ function createRoundItem(round, itemId, currentUsername, userId) {
             </div>
             
             ${topPlayers.length > 0 ? `
-                <p class="text-sm font-medium text-gray-700 mb-2">Leaderboard (course par ${par}):</p>
                 <div class="flex flex-wrap gap-2">
-                    ${topPlayers.map((player, index) => {
-                        const playerScoreToPar = player.score - par;
-                        const playerScoreToParText = playerScoreToPar === 0 ? 'E' : 
-                                                    playerScoreToPar > 0 ? `+${playerScoreToPar}` : 
-                                                    playerScoreToPar.toString();
-                        
-                        // Display based on global toggle
-                        const displayText = showScoreDifference ? 
-                            `${index + 1}. ${player.name}: ${playerScoreToParText}` :
-                            `${index + 1}. ${player.name}: ${player.score}`;
-                        
-                        return `
-                            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${
-                                index === 0 ? 'bg-yellow-100 text-yellow-800' : 
-                                index === 1 ? 'bg-gray-100 text-gray-800' : 
-                                'bg-orange-100 text-orange-800'
-                            }">
-                                ${displayText}
-                            </span>
-                        `;
-                    }).join('')}
+                    ${topPlayers.length > 0 ? `
+                        <p class="text-sm font-medium text-gray-700 mb-2">Leaderboard (played par ${playedPar}):</p>
+                        <div class="flex flex-wrap gap-2">
+                            ${topPlayers.map((player, index) => {
+                                const playerScoreToPar = player.score - playedPar; // Use played par here too
+                                const playerScoreToParText = playerScoreToPar === 0 ? 'E' : 
+                                                            playerScoreToPar > 0 ? `+${playerScoreToPar}` : 
+                                                            playerScoreToPar.toString();
+                                
+                                // Display based on global toggle
+                                const displayText = showScoreDifference ? 
+                                    `${index + 1}. ${player.name}: ${playerScoreToParText}` :
+                                    `${index + 1}. ${player.name}: ${player.score}`;
+                                
+                                return `
+                                    <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${
+                                        index === 0 ? 'bg-yellow-100 text-yellow-800' : 
+                                        index === 1 ? 'bg-gray-100 text-gray-800' : 
+                                        'bg-orange-100 text-orange-800'
+                                    }">
+                                        ${displayText}
+                                    </span>
+                                `;
+                            }).join('')}
+                        </div>
+                    ` : ''}
                 </div>
             ` : ''}
         </div>
@@ -3122,9 +3373,9 @@ async function updateProgress() {
             return;
         }
 
-        // Filter rounds where user actually has a score
+        // Filter rounds where user actually has a score AND played at least one hole
         const yourRounds = rounds.filter(round => {
-            if (round.final_scores && currentUsername && round.final_scores[currentUsername] != null) {
+            if (round.final_scores && currentUsername && round.final_scores[currentUsername] != null && round.final_scores[currentUsername] > 0) {
                 return true;
             }
             return false;
@@ -3132,64 +3383,82 @@ async function updateProgress() {
         
         document.getElementById('total-rounds').textContent = yourRounds.length;
         
-        // Replace the no-data section with:
         if (yourRounds.length === 0) {
             // Reset all displays for no data
             document.getElementById('avg-score').textContent = '-';
-            document.getElementById('best-round').textContent = '-';
-            document.getElementById('best-par').textContent = '-'; // Update this ID
+            document.getElementById('total-throws').textContent = '-'; // ADD THIS LINE
+            document.getElementById('best-par').textContent = '-';
             document.getElementById('last-5-avg').textContent = '-';
             document.getElementById('improvement-trend').textContent = '-';
             document.getElementById('best-course').textContent = 'No rounds yet';
-            document.getElementById('score-distribution').innerHTML = '<p class="text-gray-500 text-center">No rounds completed yet</p>';
-            document.getElementById('course-performance').innerHTML = '<p class="text-gray-500 text-center">No rounds completed yet</p>';
+            document.getElementById('score-distribution').innerHTML = '<p class="text-gray-500 text-center py-8">No rounds completed yet</p>';
+            document.getElementById('course-performance').innerHTML = '<p class="text-gray-500 text-center py-8">No rounds completed yet</p>';
             return;
         }
 
-        // Calculate detailed statistics
+        // Calculate detailed statistics - WAIT for coursesData to be loaded
+        if (!coursesData || coursesData.length === 0) {
+            console.log('Courses data not loaded yet, waiting...');
+            await loadCourses();
+        }
+
         const roundsWithDetails = yourRounds.map(round => {
             const score = round.final_scores[currentUsername];
             const course = coursesData.find(c => c.id == round.course_id);
-            const par = course ? course.holes.reduce((a, b) => a + b, 0) : 0;
-            const scoreToPar = par > 0 ? score - par : 0;
             
-            // Get hole-by-hole scores for this user
+            if (!course) return null;
+            
+            // Calculate par only for holes that were actually played
+            let playedPar = 0;
+            let playedHoles = 0;
             const userScores = getUserHoleScores(round, user.id, currentUsername);
+            
+            if (userScores && userScores.length > 0) {
+                userScores.forEach((holeScore, index) => {
+                    if (holeScore > 0 && index < course.holes.length) {
+                        playedPar += course.holes[index];
+                        playedHoles++;
+                    }
+                });
+            }
+            
+            const scoreToPar = playedPar > 0 && score > 0 ? score - playedPar : 0;
             
             return {
                 ...round,
                 score,
-                par,
+                par: playedPar, // This is now the played par, not total course par
                 scoreToPar,
                 course,
-                holeScores: userScores
+                holeScores: userScores,
+                playedHoles
             };
-        }).filter(round => round.par > 0); // Only include rounds with valid course data
+        }).filter(round => round && round.par > 0 && round.score > 0); // Only include rounds with valid played data
 
         if (roundsWithDetails.length === 0) {
-            document.getElementById('score-distribution').innerHTML = '<p class="text-gray-500 text-center">No valid course data available</p>';
-            document.getElementById('course-performance').innerHTML = '<p class="text-gray-500 text-center">No valid course data available</p>';
+            document.getElementById('score-distribution').innerHTML = '<p class="text-gray-500 text-center py-8">No valid course data available</p>';
+            document.getElementById('course-performance').innerHTML = '<p class="text-gray-500 text-center py-8">No valid course data available</p>';
             return;
         }
 
-        // Basic stats
+        // Basic stats calculation
         const scores = roundsWithDetails.map(r => r.score);
         const scoresToPar = roundsWithDetails.map(r => r.scoreToPar);
-        
-        const avgScore = (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1);
-        const bestScore = Math.min(...scores);
-        const bestRound = roundsWithDetails.find(r => r.score === bestScore);
+
+        // Calculate total throws (sum of all scores)
+        const totalThrows = scores.reduce((sum, score) => sum + score, 0);
+
+        // Calculate average score relative to par
         const avgToPar = (scoresToPar.reduce((a, b) => a + b, 0) / scoresToPar.length).toFixed(1);
+
+        // Find best round relative to par (lowest score relative to par)
+        const bestToPar = Math.min(...scoresToPar);
+
+        // Update the displays with correct values
+        document.getElementById('total-throws').textContent = totalThrows.toLocaleString(); // Total throws across all rounds
+        document.getElementById('avg-score').textContent = avgToPar == 0 ? 'E' : (avgToPar > 0 ? `+${avgToPar}` : avgToPar); // Average relative to par
+        document.getElementById('best-par').textContent = bestToPar == 0 ? 'E' : (bestToPar > 0 ? `+${bestToPar}` : bestToPar); // Best round relative to par
         
-        document.getElementById('avg-score').textContent = avgScore;
-        document.getElementById('best-round').textContent = bestRound ? `${bestScore} (${bestRound.scoreToPar >= 0 ? '+' : ''}${bestRound.scoreToPar})` : bestScore;
-        document.getElementById('avg-par').textContent = avgToPar >= 0 ? `+${avgToPar}` : avgToPar;
-
-        // Add this after the existing basic stats calculation:
-
-        const bestToPar = bestRound ? bestRound.scoreToPar : 0;
-        document.getElementById('best-par').textContent = bestToPar >= 0 ? `+${bestToPar}` : bestToPar;
-
         // Last 5 rounds average and trend
         const last5 = roundsWithDetails.slice(-5);
         if (last5.length >= 2) {
@@ -3222,145 +3491,192 @@ async function updateProgress() {
         }
 
         // Calculate score distribution (birdies, pars, bogeys, etc.)
-        const scoreTypes = {
-            'Ace (Hole-in-one)': 0,
-            'Albatross (-3)': 0,
-            'Eagle (-2)': 0,
-            'Birdie (-1)': 0,
-            'Par (E)': 0,
-            'Bogey (+1)': 0,
-            'Double Bogey (+2)': 0,
-            'Triple+ (+3)': 0
-        };
-
-        let totalHoles = 0;
-
-        roundsWithDetails.forEach(round => {
-            if (round.holeScores && round.course) {
-                round.holeScores.forEach((score, holeIndex) => {
-                    if (score > 0 && holeIndex < round.course.holes.length) {
-                        const par = round.course.holes[holeIndex];
-                        const diff = score - par;
-                        totalHoles++;
-
-                        if (score === 1) {
-                            scoreTypes['Ace (Hole-in-one)']++;
-                        } else if (diff === -3) {
-                            scoreTypes['Albatross (-3)']++;
-                        } else if (diff === -2) {
-                            scoreTypes['Eagle (-2)']++;
-                        } else if (diff === -1) {
-                            scoreTypes['Birdie (-1)']++;
-                        } else if (diff === 0) {
-                            scoreTypes['Par (E)']++;
-                        } else if (diff === 1) {
-                            scoreTypes['Bogey (+1)']++;
-                        } else if (diff === 2) {
-                            scoreTypes['Double Bogey (+2)']++;
-                        } else if (diff >= 3) {
-                            scoreTypes['Triple+ (+3)']++;
-                        }
-                    }
-                });
-            }
-        });
-
-        // Display score distribution
-        const distributionContainer = document.getElementById('score-distribution');
-        distributionContainer.innerHTML = '';
-
-        Object.entries(scoreTypes).forEach(([type, count]) => {
-            const percentage = totalHoles > 0 ? (count / totalHoles * 100).toFixed(1) : 0;
-            const color = getScoreTypeColor(type);
-            
-            if (count > 0 || ['Birdie (-1)', 'Par (E)', 'Bogey (+1)', 'Double Bogey (+2)'].includes(type)) {
-                const bar = document.createElement('div');
-                bar.className = 'flex items-center justify-between p-3 bg-white rounded-lg';
-                bar.innerHTML = `
-                    <div class="flex items-center gap-3 flex-1">
-                        <span class="font-medium text-sm w-32">${type}</span>
-                        <div class="flex-1 bg-gray-200 rounded-full h-6 relative overflow-hidden">
-                            <div class="h-full rounded-full ${color}" style="width: ${Math.max(percentage, 2)}%"></div>
-                            <span class="absolute inset-0 flex items-center justify-center text-xs font-semibold text-gray-700">
-                                ${percentage}%
-                            </span>
-                        </div>
-                        <span class="font-bold text-sm w-8">${count}</span>
-                    </div>
-                `;
-                distributionContainer.appendChild(bar);
-            }
-        });
-
+        updateScoreDistribution(roundsWithDetails);
+        
         // Course performance analysis
-        const courseStats = {};
-        roundsWithDetails.forEach(round => {
-            const courseName = round.course_name;
-            if (!courseStats[courseName]) {
-                courseStats[courseName] = {
-                    rounds: 0,
-                    totalScore: 0,
-                    totalToPar: 0,
-                    bestScore: Infinity,
-                    bestToPar: Infinity
-                };
-            }
-            
-            courseStats[courseName].rounds++;
-            courseStats[courseName].totalScore += round.score;
-            courseStats[courseName].totalToPar += round.scoreToPar;
-            courseStats[courseName].bestScore = Math.min(courseStats[courseName].bestScore, round.score);
-            courseStats[courseName].bestToPar = Math.min(courseStats[courseName].bestToPar, round.scoreToPar);
-        });
-
-        // Find best course (lowest average to par)
-        let bestCourseName = '-';
-        let bestCourseAvg = Infinity;
-        
-        Object.entries(courseStats).forEach(([courseName, stats]) => {
-            const avgToPar = stats.totalToPar / stats.rounds;
-            if (avgToPar < bestCourseAvg) {
-                bestCourseAvg = avgToPar;
-                bestCourseName = courseName;
-            }
-        });
-        
-        document.getElementById('best-course').textContent = bestCourseName;
-
-        // Display course performance
-        const courseContainer = document.getElementById('course-performance');
-        courseContainer.innerHTML = '';
-
-        Object.entries(courseStats)
-            .sort(([,a], [,b]) => (a.totalToPar / a.rounds) - (b.totalToPar / b.rounds))
-            .forEach(([courseName, stats]) => {
-                const avgScore = (stats.totalScore / stats.rounds).toFixed(1);
-                const avgToPar = (stats.totalToPar / stats.rounds).toFixed(1);
-                const isPerformanceGood = stats.totalToPar / stats.rounds < 0;
-                
-                const courseCard = document.createElement('div');
-                courseCard.className = 'flex items-center justify-between p-4 bg-white rounded-lg border-l-4 ' + 
-                    (isPerformanceGood ? 'border-green-500' : 'border-red-500');
-                courseCard.innerHTML = `
-                    <div>
-                        <h4 class="font-semibold text-gray-800">${courseName}</h4>
-                        <p class="text-sm text-gray-600">${stats.rounds} round${stats.rounds !== 1 ? 's' : ''} played</p>
-                    </div>
-                    <div class="text-right">
-                        <div class="font-bold text-lg ${isPerformanceGood ? 'text-green-600' : 'text-red-600'}">
-                            ${avgToPar >= 0 ? '+' : ''}${avgToPar}
-                        </div>
-                        <div class="text-sm text-gray-600">
-                            Best: ${stats.bestToPar >= 0 ? '+' : ''}${stats.bestToPar} │ Avg: ${avgScore}
-                        </div>
-                    </div>
-                `;
-                courseContainer.appendChild(courseCard);
-            });
+        updateCoursePerformance(roundsWithDetails);
 
     } catch (error) {
         console.error('Error updating progress:', error);
     }
+}
+
+// Add this new function for score distribution
+function updateScoreDistribution(roundsWithDetails) {
+    const scoreTypes = {
+        'Ace (Hole-in-one)': 0,
+        'Albatross (-3)': 0,
+        'Eagle (-2)': 0,
+        'Birdie (-1)': 0,
+        'Par (E)': 0,
+        'Bogey (+1)': 0,
+        'Double Bogey (+2)': 0,
+        'Triple+ (+3)': 0
+    };
+
+    let totalHoles = 0;
+
+    roundsWithDetails.forEach(round => {
+        if (round.holeScores && round.course) {
+            round.holeScores.forEach((score, holeIndex) => {
+                if (score > 0 && holeIndex < round.course.holes.length) {
+                    const par = round.course.holes[holeIndex];
+                    const diff = score - par;
+                    totalHoles++;
+
+                    if (score === 1) {
+                        scoreTypes['Ace (Hole-in-one)']++;
+                    } else if (diff === -3) {
+                        scoreTypes['Albatross (-3)']++;
+                    } else if (diff === -2) {
+                        scoreTypes['Eagle (-2)']++;
+                    } else if (diff === -1) {
+                        scoreTypes['Birdie (-1)']++;
+                    } else if (diff === 0) {
+                        scoreTypes['Par (E)']++;
+                    } else if (diff === 1) {
+                        scoreTypes['Bogey (+1)']++;
+                    } else if (diff === 2) {
+                        scoreTypes['Double Bogey (+2)']++;
+                    } else if (diff >= 3) {
+                        scoreTypes['Triple+ (+3)']++;
+                    }
+                }
+            });
+        }
+    });
+
+    // Display score distribution
+    const distributionContainer = document.getElementById('score-distribution');
+    distributionContainer.innerHTML = '';
+
+    if (totalHoles === 0) {
+        distributionContainer.innerHTML = '<p class="text-gray-500 text-center py-8">No hole-by-hole data available</p>';
+        return;
+    }
+
+    Object.entries(scoreTypes).forEach(([type, count]) => {
+        const percentage = totalHoles > 0 ? (count / totalHoles * 100).toFixed(1) : 0;
+        const color = getScoreTypeColor(type);
+        
+        if (count > 0 || ['Birdie (-1)', 'Par (E)', 'Bogey (+1)', 'Double Bogey (+2)'].includes(type)) {
+            const bar = document.createElement('div');
+            bar.className = 'flex items-center justify-between p-3 bg-white rounded-lg shadow-sm';
+            bar.innerHTML = `
+                <div class="flex items-center gap-3 flex-1">
+                    <span class="font-medium text-sm w-32 text-gray-700">${type}</span>
+                    <div class="flex-1 bg-gray-200 rounded-full h-6 relative overflow-hidden">
+                        <div class="h-full rounded-full ${color}" style="width: ${Math.max(percentage, 2)}%"></div>
+                        <span class="absolute inset-0 flex items-center justify-center text-xs font-semibold text-gray-700">
+                            ${percentage}%
+                        </span>
+                    </div>
+                    <span class="font-bold text-sm w-8 text-gray-700">${count}</span>
+                </div>
+            `;
+            distributionContainer.appendChild(bar);
+        }
+    });
+}
+
+// Add this new function for course performance
+function updateCoursePerformance(roundsWithDetails) {
+    const courseStats = {};
+    roundsWithDetails.forEach(round => {
+        const courseName = round.course_name;
+        if (!courseStats[courseName]) {
+            courseStats[courseName] = {
+                rounds: 0,
+                totalScore: 0,
+                totalToPar: 0,
+                bestScore: Infinity,
+                bestToPar: Infinity
+            };
+        }
+        
+        courseStats[courseName].rounds++;
+        courseStats[courseName].totalScore += round.score;
+        courseStats[courseName].totalToPar += round.scoreToPar;
+        courseStats[courseName].bestScore = Math.min(courseStats[courseName].bestScore, round.score);
+        courseStats[courseName].bestToPar = Math.min(courseStats[courseName].bestToPar, round.scoreToPar);
+    });
+
+    // Find best course (lowest average to par)
+    let bestCourseName = '-';
+    let bestCourseAvg = Infinity;
+    
+    Object.entries(courseStats).forEach(([courseName, stats]) => {
+        const avgToPar = stats.totalToPar / stats.rounds;
+        if (avgToPar < bestCourseAvg) {
+            bestCourseAvg = avgToPar;
+            bestCourseName = courseName;
+        }
+    });
+    
+    document.getElementById('best-course').textContent = bestCourseName;
+
+    // Display course performance
+    const courseContainer = document.getElementById('course-performance');
+    courseContainer.innerHTML = '';
+
+    if (Object.keys(courseStats).length === 0) {
+        courseContainer.innerHTML = '<p class="text-gray-500 text-center py-8">No course data available</p>';
+        return;
+    }
+
+    // Calculate overall average to par for comparison
+    const allCoursesAvgToPar = Object.values(courseStats).reduce((sum, stats) => {
+        return sum + (stats.totalToPar / stats.rounds);
+    }, 0) / Object.keys(courseStats).length;
+
+    Object.entries(courseStats)
+        .sort(([,a], [,b]) => (a.totalToPar / a.rounds) - (b.totalToPar / b.rounds))
+        .forEach(([courseName, stats]) => {
+            const avgToPar = (stats.totalToPar / stats.rounds).toFixed(1);
+            const courseAvgToPar = stats.totalToPar / stats.rounds;
+            
+            // Determine performance relative to other courses
+            let performanceLevel, borderColor, textColor;
+            if (courseAvgToPar < allCoursesAvgToPar - 1) {
+                // Significantly better than average
+                performanceLevel = 'excellent';
+                borderColor = 'border-green-500';
+                textColor = 'text-green-600';
+            } else if (courseAvgToPar < allCoursesAvgToPar) {
+                // Better than average
+                performanceLevel = 'good';
+                borderColor = 'border-green-400';
+                textColor = 'text-green-500';
+            } else if (courseAvgToPar <= allCoursesAvgToPar + 1) {
+                // Around average
+                performanceLevel = 'average';
+                borderColor = 'border-yellow-500';
+                textColor = 'text-yellow-600';
+            } else {
+                // Worse than average
+                performanceLevel = 'poor';
+                borderColor = 'border-red-500';
+                textColor = 'text-red-600';
+            }
+            
+            const courseCard = document.createElement('div');
+            courseCard.className = `flex items-center justify-between p-4 bg-white rounded-lg border-l-4 shadow-sm ${borderColor}`;
+            courseCard.innerHTML = `
+                <div>
+                    <h4 class="font-semibold text-gray-800">${courseName}</h4>
+                    <p class="text-sm text-gray-600">${stats.rounds} round${stats.rounds !== 1 ? 's' : ''} played</p>
+                </div>
+                <div class="text-right">
+                    <div class="font-bold text-lg ${textColor}">
+                        ${avgToPar == 0 ? 'E' : (avgToPar >= 0 ? '+' : '')}${avgToPar}
+                    </div>
+                    <div class="text-sm text-gray-600">
+                        Best: ${stats.bestToPar == 0 ? 'E' : (stats.bestToPar >= 0 ? '+' : '')}${stats.bestToPar}
+                    </div>
+                </div>
+            `;
+            courseContainer.appendChild(courseCard);
+        });
 }
 
 // Helper function to get user's hole scores from a round
@@ -3401,23 +3717,55 @@ async function updateUserStats() {
         const yourRounds = gameData.rounds.filter(round => 
             round.finalScores[auth.currentUser.displayName] !== undefined
         );
+
+        if (yourRounds.length === 0) {
+            // Reset all displays for no data
+            document.getElementById('avg-score').textContent = '-';
+            document.getElementById('total-throws').textContent = '-'; // Add this line
+            document.getElementById('best-par').textContent = '-';
+            document.getElementById('last-5-avg').textContent = '-';
+            document.getElementById('improvement-trend').textContent = '-';
+            document.getElementById('best-course').textContent = 'No rounds yet';
+            document.getElementById('score-distribution').innerHTML = '<p class="text-gray-500 text-center py-8">No rounds completed yet</p>';
+            document.getElementById('course-performance').innerHTML = '<p class="text-gray-500 text-center py-8">No rounds completed yet</p>';
+            return;
+        }
         
         if (yourRounds.length > 0) {
-            // In updateProgress function, replace the basic stats calculation section with:
-
-            // Basic stats - calculate averages relative to par
+            // Basic stats calculation - Replace the existing basic stats section with this:
             const scores = roundsWithDetails.map(r => r.score);
             const scoresToPar = roundsWithDetails.map(r => r.scoreToPar);
 
+            // Calculate total throws with debugging
+            console.log('Rounds with details:', roundsWithDetails.length);
+            console.log('Scores array:', scores);
+            console.log('Sample round scores:', roundsWithDetails.slice(0, 2).map(r => ({ score: r.score, type: typeof r.score })));
+
+            // More robust total throws calculation
+            const totalThrows = roundsWithDetails.reduce((sum, round) => {
+                const score = round.score;
+                if (score && typeof score === 'number' && score > 0) {
+                    return sum + score;
+                }
+                return sum;
+            }, 0);
+
+            console.log('Calculated total throws:', totalThrows);
+
+            // Calculate average score (actual strokes, not relative to par)
             const avgScore = (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1);
-            const avgToPar = (scoresToPar.reduce((a, b) => a + b, 0) / scoresToPar.length).toFixed(1);
+
+            // Find best round (lowest score)
             const bestScore = Math.min(...scores);
             const bestRound = roundsWithDetails.find(r => r.score === bestScore);
 
-            // Update displays - show average as difference from par
-            document.getElementById('avg-score').textContent = avgToPar >= 0 ? `+${avgToPar}` : avgToPar;
-            document.getElementById('best-round').textContent = bestRound ? `${bestScore} (${bestRound.scoreToPar >= 0 ? '+' : ''}${bestRound.scoreToPar})` : bestScore;
-            document.getElementById('avg-par').textContent = avgToPar >= 0 ? `+${avgToPar}` : avgToPar;
+            // Update the displays
+            document.getElementById('total-throws').textContent = totalThrows.toLocaleString(); // Format with commas for large numbers
+            document.getElementById('avg-score').textContent = avgScore;
+            document.getElementById('best-par').textContent = bestScore; // Show actual best score, not relative to par
+
+            // Keep the existing avgToPar calculation if you need it elsewhere
+            const avgToPar = (scoresToPar.reduce((a, b) => a + b, 0) / scoresToPar.length).toFixed(1);
         }
     } catch (error) {
         console.error('Error updating stats:', error);
@@ -3592,6 +3940,34 @@ function adjustHeaderForViewport() {
         header.classList.add('compact-header');
         subtitle.classList.add('hidden');
     }
+}
+
+// Add these loading screen functions
+function showLoadingScreen() {
+    const loadingScreen = document.getElementById('loading-screen');
+    if (loadingScreen) {
+        loadingScreen.style.display = 'flex';
+    }
+}
+
+function hideLoadingScreen() {
+    const loadingScreen = document.getElementById('loading-screen');
+    if (loadingScreen) {
+        loadingScreen.style.display = 'none';
+    }
+}
+
+// Add loading state management
+let isAppLoading = true;
+let loadingTimeout = null;
+
+// Enhanced showSection with loading protection
+function showSectionWithLoadingProtection(sectionId) {
+    if (isAppLoading) {
+        console.log('App still loading, ignoring navigation request');
+        return;
+    }
+    showSection(sectionId);
 }
 
 async function deleteRoundFromDetails(roundId) {
@@ -3877,21 +4253,74 @@ async function loadProfile() {
     // Fill in email field
     document.getElementById("profile-email").value = user.email;
 
-    // Load profile from DB
-    const { data, error } = await supabase
-        .from("profiles")
-        .select("username, bio, profile_picture_base64")
-        .eq("id", user.id)
-        .single();
+    try {
+        // Try to load profile from DB
+        const { data, error } = await supabase
+            .from("profiles")
+            .select("username, bio, profile_picture_base64")
+            .eq("id", user.id)
+            .single();
 
-    if (data) {
-        document.getElementById("profile-username").value = data.username || "";
-        document.getElementById("profile-bio").value = data.bio || "";
-        
-        // Update profile picture
-        const profilePicSrc = data.profile_picture_base64 || "./images/user.png";
-        document.getElementById("profile-picture-preview").src = profilePicSrc;
-        document.getElementById("user-avatar").src = profilePicSrc;
+        if (error && error.code === 'PGRST116') {
+            // Profile doesn't exist, create one
+            console.log('Profile not found, creating new profile for user:', user.id);
+            
+            const newProfile = {
+                id: user.id,
+                username: `User_${user.id.substring(0, 8)}`,
+                bio: 'New disc golf player',
+                created_at: new Date(),
+                updated_at: new Date()
+            };
+
+            const { data: createdProfile, error: createError } = await supabase
+                .from("profiles")
+                .insert(newProfile)
+                .select()
+                .single();
+
+            if (createError) {
+                console.error('Error creating profile:', createError);
+                // Use fallback values
+                document.getElementById("profile-username").value = newProfile.username;
+                document.getElementById("profile-bio").value = newProfile.bio;
+            } else {
+                // Use created profile
+                document.getElementById("profile-username").value = createdProfile.username || newProfile.username;
+                document.getElementById("profile-bio").value = createdProfile.bio || newProfile.bio;
+            }
+            
+            // Set default profile picture
+            const defaultPicSrc = "./images/user.png";
+            document.getElementById("profile-picture-preview").src = defaultPicSrc;
+            document.getElementById("user-avatar").src = defaultPicSrc;
+            
+        } else if (error) {
+            console.error('Error loading profile:', error);
+            // Set fallback values
+            document.getElementById("profile-username").value = `User_${user.id.substring(0, 8)}`;
+            document.getElementById("profile-bio").value = 'New disc golf player';
+            document.getElementById("profile-picture-preview").src = "./images/user.png";
+            document.getElementById("user-avatar").src = "./images/user.png";
+            
+        } else if (data) {
+            // Profile exists, load it
+            document.getElementById("profile-username").value = data.username || `User_${user.id.substring(0, 8)}`;
+            document.getElementById("profile-bio").value = data.bio || 'New disc golf player';
+            
+            // Update profile picture
+            const profilePicSrc = data.profile_picture_base64 || "./images/user.png";
+            document.getElementById("profile-picture-preview").src = profilePicSrc;
+            document.getElementById("user-avatar").src = profilePicSrc;
+        }
+
+    } catch (error) {
+        console.error('Unexpected error loading profile:', error);
+        // Set fallback values
+        document.getElementById("profile-username").value = `User_${user.id.substring(0, 8)}`;
+        document.getElementById("profile-bio").value = 'New disc golf player';
+        document.getElementById("profile-picture-preview").src = "./images/user.png";
+        document.getElementById("user-avatar").src = "./images/user.png";
     }
 }
 
@@ -3900,8 +4329,37 @@ async function saveProfile() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    const username = document.getElementById("profile-username").value;
-    const bio = document.getElementById("profile-bio").value;
+    const username = document.getElementById("profile-username").value.trim();
+    const bio = document.getElementById("profile-bio").value.trim();
+
+    // Validate username
+    if (!username || username.length < 2) {
+        Swal.fire({
+            icon: "error",
+            title: "Invalid Username",
+            text: "Username must be at least 2 characters long.",
+        });
+        return;
+    }
+
+    // Check if username is already taken by another user
+    const { data: existingUser, error: checkError } = await supabase
+        .from("profiles")
+        .select("id")
+        .eq("username", username)
+        .neq("id", user.id)
+        .single();
+
+    if (checkError && checkError.code !== 'PGRST116') {
+        console.error('Error checking username:', checkError);
+    } else if (existingUser) {
+        Swal.fire({
+            icon: "error",
+            title: "Username Taken",
+            text: "This username is already taken. Please choose another one.",
+        });
+        return;
+    }
 
     try {
         let profileData = {
@@ -3928,6 +4386,7 @@ async function saveProfile() {
 
         Swal.fire({
             title: "Profile Saved!",
+            text: "Your profile has been updated successfully.",
             icon: "success"
         });
 
@@ -4317,6 +4776,10 @@ window.autoCollapseNewRound = autoCollapseNewRound;
 window.restoreNewRoundState = restoreNewRoundState;
 window.sortCourses = sortCourses;
 window.displayCourses = displayCourses;
+window.showCanvasConfetti = showCanvasConfetti;
+window.showSectionWithLoadingProtection = showSectionWithLoadingProtection;
+window.showLoadingScreen = showLoadingScreen;
+window.hideLoadingScreen = hideLoadingScreen;
 
 window.addEventListener("DOMContentLoaded", async () => {
     // Check for password reset parameters in both search and hash
@@ -4333,22 +4796,57 @@ window.addEventListener("DOMContentLoaded", async () => {
     if (session) {
         console.log("Restored session:", session.user.email);
         loginSuccessful();
+        showLoadingScreen(); // Show loading screen
+        isAppLoading = true;
         
-        // Load profile, courses, and weather in parallel
-        await Promise.all([
-            loadProfile(),
-            loadCourses(),
-            loadWeather()
-        ]);
+        // Set a timeout to prevent infinite loading
+        loadingTimeout = setTimeout(() => {
+            console.warn('Loading timeout reached, forcing app to show');
+            isAppLoading = false;
+            hideLoadingScreen();
+            showSection('new-round');
+        }, 10000); // 10 second timeout
         
-        await loadCurrentRound();
-        showSection('new-round');
-        setTimeout(() => {
-            restoreNewRoundState();
-        }, 100);
+        try {
+            // Load profile, courses, and weather in parallel with individual error handling
+            await Promise.allSettled([
+                loadProfile().catch(err => console.error('Profile loading failed:', err)),
+                loadCourses().catch(err => console.error('Courses loading failed:', err)),
+                loadWeather().catch(err => console.error('Weather loading failed:', err))
+            ]);
+            
+            await loadCurrentRound().catch(err => console.error('Current round loading failed:', err));
+            
+            // Clear timeout since we completed successfully
+            if (loadingTimeout) {
+                clearTimeout(loadingTimeout);
+                loadingTimeout = null;
+            }
+            
+            // Mark loading as complete
+            isAppLoading = false;
+            hideLoadingScreen();
+            showSection('new-round'); // Only call once
+            
+            setTimeout(() => {
+                restoreNewRoundState();
+            }, 100);
+            
+        } catch (error) {
+            console.error('Error during app initialization:', error);
+            // Clear timeout and show app anyway
+            if (loadingTimeout) {
+                clearTimeout(loadingTimeout);
+                loadingTimeout = null;
+            }
+            isAppLoading = false;
+            hideLoadingScreen();
+            showSection('new-round');
+        }
         
     } else {
         console.log("User is not logged in");
+        isAppLoading = false; // Not loading if not logged in
     }
 });
 
@@ -4360,21 +4858,16 @@ window.addEventListener("scroll", () => {
     const currentScroll = window.scrollY;
     const header = document.getElementById("main-header");
 
-    console.log(`🔄 Scroll: ${Math.round(currentScroll)}px`);
-
     if (currentScroll < fadeStartDistance) {
         // Fully visible
         currentHeaderOpacity = 0.95;
-        console.log(`✅ Fully visible (${currentScroll} < ${fadeStartDistance})`);
     } else if (currentScroll > fadeCompleteDistance) {
         // Fully transparent
         currentHeaderOpacity = 0;
-        console.log(`❌ Fully transparent (${currentScroll} > ${fadeCompleteDistance})`);
     } else {
         // Linear fade between start and complete distances
         const fadeProgress = (currentScroll - fadeStartDistance) / (fadeCompleteDistance - fadeStartDistance);
         currentHeaderOpacity = 0.95 * (1 - fadeProgress);
-        console.log(`🌫️ Fading: ${fadeProgress.toFixed(2)} progress, opacity: ${currentHeaderOpacity.toFixed(3)}`);
     }
 
     // Fade background
@@ -4383,7 +4876,12 @@ window.addEventListener("scroll", () => {
     
     // Fade all content inside the header
     header.style.opacity = currentHeaderOpacity / 0.95; // Normalize to 0-1 range
-    
-    console.log(`📝 Final opacity: ${currentHeaderOpacity.toFixed(3)}, Content opacity: ${(currentHeaderOpacity / 0.95).toFixed(3)}`);
-    console.log(`---`);
+});
+
+// Add confetti testing with G key (for testing purposes)
+document.addEventListener('keydown', function(event) {
+    if (event.key === 'g' || event.key === 'G') {
+        console.log('🎉 Confetti triggered by G key!');
+        showCanvasConfetti();
+    }
 });

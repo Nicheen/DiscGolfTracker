@@ -14,7 +14,8 @@
     <link rel="icon" type="image/x-icon" href="/images/icon.png">
 </head>
 <body>
-    <div id="login-screen" class="bg-gradient-to-r from-indigo-600 to-purple-600 login-container" style="display: true;">
+    <!-- Login Screen -->
+    <div id="login-screen" class="login-container bg-gradient-to-r from-indigo-600 to-purple-600" style="display: block;">
         <div class="login-card">
             <div class="login-header">
                 <h1>🥏 Disc Golf Tracker</h1>
@@ -60,6 +61,20 @@
                     </div>
                 </form>
             </div>
+        </div>
+    </div>
+
+    <!-- Loading Screen -->
+    <div id="loading-screen" class="fixed inset-0 bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 flex items-center justify-center z-50" style="display: none;">
+        <div class="text-center text-white">
+            <div class="relative mb-6">
+                <div class="w-16 h-16 border-4 border-white/30 border-t-white rounded-full animate-spin mx-auto"></div>
+                <div class="absolute inset-0 flex items-center justify-center">
+                    <span class="text-2xl">🥏</span>
+                </div>
+            </div>
+            <h2 class="text-xl font-semibold mb-2">Loading Disc Golf Tracker</h2>
+            <p class="text-white/80">Getting your courses and data ready...</p>
         </div>
     </div>
 
@@ -161,22 +176,22 @@
                     </h2>
                     
                     <!-- Main Stats Grid -->
-                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-                        <div class="bg-gradient-to-br from-indigo-500 to-purple-600 text-white p-6 rounded-xl text-center shadow-lg">
-                            <div id="total-rounds" class="text-3xl font-bold mb-2">0</div>
-                            <div class="text-indigo-100 text-sm">Total Rounds</div>
+                    <div class="progress-stats-grid">
+                        <div class="progress-stat-card" style="--gradient-from: #6366f1; --gradient-to: #8b5cf6;">
+                            <div id="total-rounds" class="progress-stat-number">0</div>
+                            <div class="progress-stat-label">Total<br>Rounds</div>
                         </div>
-                        <div class="bg-gradient-to-br from-green-500 to-teal-600 text-white p-6 rounded-xl text-center shadow-lg">
-                            <div id="avg-score" class="text-3xl font-bold mb-2">-</div>
-                            <div class="text-green-100 text-sm">Average ±Par</div>
+                        <div class="progress-stat-card" style="--gradient-from: #f59e0b; --gradient-to: #d97706;">
+                            <div id="total-throws" class="progress-stat-number">-</div>
+                            <div class="progress-stat-label">Total<br>Throws</div>
                         </div>
-                        <div class="bg-gradient-to-br from-orange-500 to-red-600 text-white p-6 rounded-xl text-center shadow-lg">
-                            <div id="best-round" class="text-3xl font-bold mb-2">-</div>
-                            <div class="text-orange-100 text-sm">Best Round</div>
+                        <div class="progress-stat-card" style="--gradient-from: #10b981; --gradient-to: #059669;">
+                            <div id="avg-score" class="progress-stat-number">-</div>
+                            <div class="progress-stat-label">Average<br>Score</div>
                         </div>
-                        <div class="bg-gradient-to-br from-purple-500 to-pink-600 text-white p-6 rounded-xl text-center shadow-lg">
-                            <div id="best-par" class="text-3xl font-bold mb-2">-</div>
-                            <div class="text-purple-100 text-sm">Best ±Par</div>
+                        <div class="progress-stat-card" style="--gradient-from: #8b5cf6; --gradient-to: #ec4899;">
+                            <div id="best-par" class="progress-stat-number">-</div>
+                            <div class="progress-stat-label">Best<br>Round</div>
                         </div>
                     </div>
 
@@ -306,23 +321,23 @@
         <!-- Fixed Bottom Navigation -->
         <nav class="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-gray-200 px-2 py-2 z-50 shadow-lg">
             <div class="flex items-center max-w-6xl mx-auto">
-                <button class="nav-btn flex-1 flex flex-col items-center gap-1 py-1 rounded-lg font-medium transition-all duration-200 bg-indigo-600 text-white" onclick="showSection('new-round')">
+                <button class="nav-btn flex-1 flex flex-col items-center gap-1 py-1 rounded-lg font-medium transition-all duration-200 bg-indigo-600 text-white" onclick="showSectionWithLoadingProtection('new-round')">
                     <span class="text-xl">🥏</span>
                     <span class="text-xs">Round</span>
                 </button>
-                <button class="nav-btn flex-1 flex flex-col items-center gap-1 py-1 rounded-lg font-medium transition-all duration-200 text-gray-600 hover:text-indigo-600 hover:bg-indigo-50" onclick="showSection('history')">
+                <button class="nav-btn flex-1 flex flex-col items-center gap-1 py-1 rounded-lg font-medium transition-all duration-200 text-gray-600 hover:text-indigo-600 hover:bg-indigo-50" onclick="showSectionWithLoadingProtection('history')">
                     <span class="text-xl">📝</span>
                     <span class="text-xs">History</span>
                 </button>
-                <button class="nav-btn flex-1 flex flex-col items-center gap-1 py-1 rounded-lg font-medium transition-all duration-200 text-gray-600 hover:text-indigo-600 hover:bg-indigo-50" onclick="showSection('progress')">
+                <button class="nav-btn flex-1 flex flex-col items-center gap-1 py-1 rounded-lg font-medium transition-all duration-200 text-gray-600 hover:text-indigo-600 hover:bg-indigo-50" onclick="showSectionWithLoadingProtection('progress')">
                     <span class="text-xl">📈</span>
                     <span class="text-xs">Progress</span>
                 </button>
-                <button class="nav-btn flex-1 flex flex-col items-center gap-1 py-1 rounded-lg font-medium transition-all duration-200 text-gray-600 hover:text-indigo-600 hover:bg-indigo-50" onclick="showSection('friends')">
+                <button class="nav-btn flex-1 flex flex-col items-center gap-1 py-1 rounded-lg font-medium transition-all duration-200 text-gray-600 hover:text-indigo-600 hover:bg-indigo-50" onclick="showSectionWithLoadingProtection('friends')">
                     <span class="text-xl">👥</span>
                     <span class="text-xs">Friends</span>
                 </button>
-                <button class="nav-btn flex-1 flex flex-col items-center gap-1 py-1 rounded-lg font-medium transition-all duration-200 text-gray-600 hover:text-indigo-600 hover:bg-indigo-50" onclick="showSection('profile')">
+                <button class="nav-btn flex-1 flex flex-col items-center gap-1 py-1 rounded-lg font-medium transition-all duration-200 text-gray-600 hover:text-indigo-600 hover:bg-indigo-50" onclick="showSectionWithLoadingProtection('profile')">
                     <img id="user-avatar" src="./images/user.png" alt="User" class="w-7 h-7 rounded-full border-2 border-black/50">
                     <span class="text-xs">Profile</span>
                 </button>

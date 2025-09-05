@@ -1,3 +1,27 @@
+/* Mobile login screen fixes */
+@media (max-width: 768px) {
+    .login-container {
+        padding: 15px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+    }
+    
+    .login-card {
+        max-height: calc(100vh - 30px);
+        margin: 0;
+        width: 100%;
+        max-width: none; /* Remove max-width constraint on mobile */
+    }
+    
+    /* Ensure no weird positioning on mobile */
+    body.login-active {
+        position: fixed;
+        overflow: hidden;
+        -webkit-overflow-scrolling: touch;
+    }
+}
+
 /* Mobile adjustments */
 @media (max-width: 768px) {
     body {
