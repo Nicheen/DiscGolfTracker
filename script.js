@@ -300,10 +300,15 @@ async function signOut() {
             text: error.message,
         });
     } else {
+        // Reset app state before showing success message
+        resetAppState();
+        
         Swal.fire({
-            title: "Successfuly Signed out",
+            title: "Successfully Signed out",
             text: 'You are being redirected to the sign in page!',
-            icon: "success"
+            icon: "success",
+            timer: 2000,
+            showConfirmButton: false
         });
         signOutSuccessful();
     }
@@ -2175,11 +2180,6 @@ function showCanvasConfetti() {
 }
 
 function showSection(sectionId) {
-    if (isAppLoading && sectionId !== 'new-round') {
-        console.log('App still loading, blocking navigation to:', sectionId);
-        return;
-    }
-
     // Hide all sections
     document.querySelectorAll('.section').forEach(s => {
         s.classList.remove('active');
@@ -2193,7 +2193,7 @@ function showSection(sectionId) {
         targetSection.classList.remove('hidden');
     }
     
-    // Update navigation button states
+    // Update navigation button states - reset all first
     document.querySelectorAll('.nav-btn').forEach(btn => {
         btn.classList.remove('bg-indigo-600', 'text-white');
         btn.classList.add('text-gray-600', 'hover:text-indigo-600', 'hover:bg-indigo-50');
@@ -2202,7 +2202,7 @@ function showSection(sectionId) {
     // Find and activate the correct button
     const buttons = document.querySelectorAll('.nav-btn');
     buttons.forEach(btn => {
-        const buttonText = btn.querySelector('span:last-child').textContent.toLowerCase();
+        const buttonText = btn.querySelector('span:last-child')?.textContent?.toLowerCase();
         if ((sectionId === 'new-round' && buttonText === 'round') ||
             (sectionId === 'history' && buttonText === 'history') ||
             (sectionId === 'progress' && buttonText === 'progress') ||
@@ -4216,9 +4216,49 @@ async function deleteRound(roundId) {
 }
 
 // Add this new function to your script.js file
-function loginSuccessful() {
+async function loginSuccessful() {
     document.getElementById('login-screen').style.display = 'none';
     document.getElementById('main-app').style.display = 'block';
+    
+    // Show loading state for weather
+    const weatherWidget = document.getElementById('weather-widget');
+    const weatherIcon = document.getElementById('weather-icon');
+    const weatherTemp = document.getElementById('weather-temp');
+    const weatherDesc = document.getElementById('weather-desc');
+    
+    if (weatherWidget && weatherIcon && weatherTemp && weatherDesc) {
+        weatherIcon.textContent = '🔄';
+        weatherTemp.textContent = '...';
+        weatherDesc.textContent = 'Loading...';
+        weatherWidget.classList.remove('hidden');
+        weatherWidget.classList.add('flex');
+    }
+    
+    // Set default section and nav state
+    showSection('new-round');
+    
+    // Load all necessary data
+    try {
+        await Promise.all([
+            loadProfile(),
+            loadCourses(),
+            loadWeather()
+        ]);
+        
+        await loadCurrentRound();
+        
+        // Restore UI state
+        setTimeout(() => {
+            restoreNewRoundState();
+        }, 100);
+        
+    } catch (error) {
+        console.error('Error loading app data:', error);
+        // Hide weather widget if loading fails
+        if (weatherWidget) {
+            weatherWidget.classList.add('hidden');
+        }
+    }
 }
 
 function signOutSuccessful() {
@@ -4551,6 +4591,56 @@ function switchAuthMode(mode) {
         forgotLink.style.display = 'none';
         form.classList.add('auth-mode-signup');
     }
+}
+
+function resetAppState() {
+    // Reset navigation
+    document.querySelectorAll('.nav-btn').forEach(btn => {
+        btn.classList.remove('bg-indigo-600', 'text-white');
+        btn.classList.add('text-gray-600', 'hover:text-indigo-600', 'hover:bg-indigo-50');
+    });
+    
+    // Reset sections
+    document.querySelectorAll('.section').forEach(section => {
+        section.classList.remove('active');
+        section.classList.add('hidden');
+    });
+    
+    // Reset weather widget
+    const weatherWidget = document.getElementById('weather-widget');
+    if (weatherWidget) {
+        weatherWidget.classList.add('hidden');
+        weatherWidget.classList.remove('flex');
+    }
+    
+    // Reset profile picture
+    document.getElementById('user-avatar').src = './images/user.png';
+    document.getElementById('profile-picture-preview').src = './images/user.png';
+    
+    // Reset forms
+    document.getElementById('login-email').value = '';
+    document.getElementById('login-password').value = '';
+    document.getElementById('profile-username').value = '';
+    document.getElementById('profile-email').value = '';
+    document.getElementById('profile-bio').value = '';
+    
+    // Reset course selection
+    document.getElementById('course').value = '';
+    
+    // Reset scorecard
+    document.getElementById('scorecard').style.display = 'none';
+    
+    // Reset global variables
+    currentRound = null;
+    coursesData = [];
+    profilePictureCache = {};
+    coursesCacheTime = null;
+    selectedProfilePicture = null;
+    
+    // Clear content containers
+    document.getElementById('courses-container').innerHTML = '';
+    document.getElementById('history-list').innerHTML = '';
+    document.getElementById('friends-list').innerHTML = '';
 }
 
 // Forgot password functionality

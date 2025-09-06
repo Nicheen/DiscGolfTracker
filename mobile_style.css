@@ -8,10 +8,11 @@
     }
     
     .login-card {
-        max-height: calc(100vh - 30px);
-        margin: 0;
-        width: 100%;
-        max-width: none; /* Remove max-width constraint on mobile */
+        padding: 25px 15px;
+        margin: 0 auto;
+        margin-top: 30%;
+        width: 95%;
+        max-width: 350px;
     }
     
     /* Ensure no weird positioning on mobile */
@@ -30,12 +31,6 @@
     
     .container {
         padding: 15px 10px;
-    }
-    
-    /* LOGIN SECTION */
-    .login-card {
-        padding: 25px 15px;
-        margin: 0 5px;
     }
     
     .login-header h1 {
