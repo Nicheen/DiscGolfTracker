@@ -89,7 +89,7 @@
                 </h1>
 
                 <!-- Right side: Weather -->
-                <div id="weather-widget" class="hidden items-center hidden gap-2 bg-white/20 backdrop-blur-sm px-2 py-1 rounded-lg border border-gray-300/30 shadow-sm">
+                <div id="weather-widget" class="flex items-center hidden gap-2 bg-white/20 backdrop-blur-sm px-2 py-1 rounded-lg border border-gray-300/30 shadow-sm cursor-pointer" onclick="loadWeather()" title="Click to refresh weather">
                     <div id="weather-icon" class="text-base"></div>
                     <div class="text-xs">
                         <div id="weather-temp" class="font-semibold text-gray-800"></div>
@@ -159,8 +159,7 @@
             <!-- History Section -->
             <div id="history" class="section hidden">
                 <div class="bg-white rounded-xl shadow-lg border border-gray-200 p-6">
-                    <h2 class="text-2xl font-bold text-gray-800 mb-6 flex items-center gap-2">
-                        <span>📝</span>
+                    <h2 class="text-xl font-bold text-gray-800 mb-6 flex items-center gap-2">
                         Round History
                     </h2>
                     <div id="history-list" class="space-y-4"></div>
@@ -170,8 +169,7 @@
             <!-- Progress Section -->
             <div id="progress" class="section hidden">
                 <div class="bg-white rounded-xl shadow-lg border border-gray-200 p-6">
-                    <h2 class="text-2xl font-bold text-gray-800 mb-6 flex items-center gap-2">
-                        <span>📈</span>
+                    <h2 class="text-xl font-bold text-gray-800 mb-6 flex items-center gap-2">
                         Your Progress
                     </h2>
                     
@@ -235,20 +233,19 @@
             <!-- Friends Section -->
             <div id="friends" class="section hidden">
                 <div class="bg-white rounded-xl shadow-lg border border-gray-200 p-6">
-                    <h2 class="text-2xl font-bold text-gray-800 mb-6 flex items-center gap-2">
-                        <span>👥</span>
+                    <h2 class="text-xl font-bold text-gray-800 mb-6 flex items-center gap-2">
                         Friends & Connections
                     </h2>
                     
                     <!-- Add Friend Section -->
-                    <div class="mb-8 p-4 bg-gray-50 rounded-lg">
+                    <div class="mb-8 p-4 pt-2 pb-0 bg-gray-50 rounded-lg">
                         <label for="friend-username" class="block text-sm font-semibold text-gray-700 mb-2">Search & Add Friends</label>
                         <div class="flex gap-3 mb-3">
                             <input type="text" id="friend-username" placeholder="Search by username..." 
                                 onkeyup="if(event.key==='Enter') searchUsers()" 
                                 oninput="if(this.value.length >= 2) searchUsers(); else clearSearchResults()"
-                                class="text-sm flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
-                            <button onclick="searchUsers()" class="text-sm bg-indigo-600 text-white px-6 py-2 rounded-lg font-medium hover:bg-indigo-700 transition-colors duration-200">
+                                class="text-xs flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                            <button onclick="searchUsers()" class="text-xs bg-indigo-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-indigo-700 transition-colors duration-200">
                                 Search
                             </button>
                         </div>
@@ -261,7 +258,7 @@
                     <div>
                         <div class="flex justify-between items-center mb-4">
                             <h3 class="text-lg font-semibold text-gray-800">Your Friends</h3>
-                            <button onclick="loadFriends()" class="inline-flex items-center gap-2 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 hover:shadow-md">
+                            <button onclick="loadFriends()" class="inline-flex items-center gap-2 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 px-4 py-2 rounded-lg text-xs font-medium transition-all duration-200 hover:shadow-md">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
                             </svg>
@@ -278,7 +275,7 @@
             <!-- Profile Section -->
             <div id="profile" class="section hidden">
                 <div class="bg-white rounded-xl shadow-lg border border-gray-200 p-6">
-                    <h2 class="text-2xl font-bold text-gray-800 mb-6 flex items-center gap-2">
+                    <h2 class="text-xl font-bold text-gray-800 mb-6 flex items-center gap-2">
                         Your Profile
                     </h2>
                     <div class="space-y-4">

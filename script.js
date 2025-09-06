@@ -11,7 +11,7 @@ const supabase = createClient(supabaseUrl, supabaseKey, {
 
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 const COURSES_CACHE_DURATION = 10 * 60 * 1000; // 10 minutes
-const INITIAL_COURSE_DISPLAY_COUNT = 3;
+const INITIAL_COURSE_DISPLAY_COUNT = 2;
 const scrollThreshold = 50; // Minimum scroll distance before triggering
 const fadeDistance = 100; // Distance over which to fade
 
@@ -160,37 +160,38 @@ function displayCourses() {
         
         courseCard.innerHTML = `
             ${isPeekCard ? '<div class="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-white z-10 pointer-events-none"></div>' : ''}
-            <div class="p-3 ${isPeekCard ? 'relative z-0' : ''}">
-                <div class="flex items-center justify-between">
-                    <div class="flex-1 min-w-0">
-                        <div class="flex items-center gap-2 mb-1 flex-wrap">
-                            <h3 class="font-bold text-gray-800 text-base truncate">${course.name}</h3>
-                            <span class="difficulty-badge px-2 py-0.5 rounded-full text-xs font-semibold ${difficulty.class} flex-shrink-0">
-                                ${difficulty.text}
-                            </span>
-                            ${course.distance !== null ? 
-                                `<span class="distance-badge px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-700 flex-shrink-0">
-                                    📍 ${formatDistance(course.distance)}
-                                </span>` : ''
-                            }
-                        </div>
-                        <div class="flex items-center gap-3 text-xs text-gray-600">
-                            <span class="flex items-center gap-1">
-                                <span class="text-indigo-600">🕳️</span>
-                                <span class="font-medium">${course.holes.length}</span>
-                            </span>
-                            <span class="flex items-center gap-1">
-                                <span class="text-green-600">⛳</span>
-                                <span class="font-medium">${totalPar}</span>
-                            </span>
-                            <span class="flex items-center gap-1">
-                                <span class="text-orange-600">📏</span>
-                                <span class="font-medium">~${avgDistance}m</span>
-                            </span>
-                        </div>
+            <div class="p-3 ${isPeekCard ? 'relative z-0' : ''} relative">
+                <!-- Background emoji -->
+                <div class="absolute top-2 right-2 w-12 h-12 flex items-center justify-center text-4xl opacity-20 pointer-events-none z-0">
+                    ${getCourseEmoji(course.name)}
+                </div>
+                
+                <!-- Content container with higher z-index -->
+                <div class="relative z-10">
+                    <div class="flex items-center gap-2 mb-1 flex-wrap">
+                        <h3 class="font-bold text-gray-800 text-base truncate">${course.name}</h3>
+                        <span class="difficulty-badge px-2 py-0.5 rounded-full text-xs font-semibold ${difficulty.class} flex-shrink-0">
+                            ${difficulty.text}
+                        </span>
+                        ${course.distance !== null ? 
+                            `<span class="distance-badge px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-700 flex-shrink-0">
+                                📍 ${formatDistance(course.distance)}
+                            </span>` : ''
+                        }
                     </div>
-                    <div class="text-xl ml-3 flex-shrink-0">
-                        ${getCourseEmoji(course.name)}
+                    <div class="flex items-center gap-3 text-xs text-gray-600">
+                        <span class="flex items-center gap-1">
+                            <span class="text-indigo-600">🕳️</span>
+                            <span class="font-medium">${course.holes.length}</span>
+                        </span>
+                        <span class="flex items-center gap-1">
+                            <span class="text-green-600">⛳</span>
+                            <span class="font-medium">${totalPar}</span>
+                        </span>
+                        <span class="flex items-center gap-1">
+                            <span class="text-orange-600">📏</span>
+                            <span class="font-medium">~${avgDistance}m</span>
+                        </span>
                     </div>
                 </div>
             </div>
@@ -390,7 +391,6 @@ async function loadCourses() {
         distanceElement.innerHTML = `
             <div class="flex items-center justify-between w-full">
                 <div class="flex items-center gap-1">
-                    <span class="text-2xl">🥏</span>
                     <div class="flex items-center gap-2">
                         <h2 class="text-xl font-bold text-gray-800">New Round</h2>
                         ${userLocation ? 
@@ -1901,26 +1901,42 @@ async function getWeatherData(lat, lon) {
     }
 }
 
-function getWeatherEmoji(weatherMain, icon) {
-    const isDay = icon?.includes('d');
+function getWeatherEmoji(weatherMain, temperature) {
+    const now = new Date();
+    const hour = now.getHours();
+    const isDay = hour >= 6 && hour < 20; // 6 AM to 8 PM is considered day
     
     switch (weatherMain?.toLowerCase()) {
         case 'clear':
+        case 'sunny':
             return isDay ? '☀️' : '🌙';
+        case 'partly cloudy':
+        case 'partly sunny':
+            return isDay ? '⛅' : '🌙';
         case 'clouds':
-            return isDay ? '⛅' : '☁️';
+        case 'cloudy':
+        case 'overcast':
+            return isDay ? '☁️' : '☁️';
         case 'rain':
+        case 'light rain':
+        case 'heavy rain':
             return '🌧️';
         case 'drizzle':
+        case 'light drizzle':
             return '🌦️';
         case 'thunderstorm':
+        case 'storm':
             return '⛈️';
         case 'snow':
+        case 'light snow':
+        case 'heavy snow':
             return '❄️';
         case 'mist':
         case 'fog':
+        case 'foggy':
             return '🌫️';
         case 'haze':
+        case 'hazy':
             return '🌫️';
         case 'dust':
         case 'sand':
@@ -1936,69 +1952,58 @@ async function loadWeather() {
     const weatherTemp = document.getElementById('weather-temp');
     const weatherDesc = document.getElementById('weather-desc');
     
-    if (!weatherWidget || !weatherIcon || !weatherTemp || !weatherDesc) {
-        console.log('Weather widget elements not found');
-        return;
-    }
-    
-    // Start with widget hidden
-    weatherWidget.classList.add('hidden');
-    weatherWidget.classList.remove('flex');
+    if (!weatherWidget) return;
     
     try {
-        console.log('Starting weather load...');
+        // Show loading state
+        if (weatherIcon) weatherIcon.textContent = '🔄';
         
-        // Get user location with timeout
-        const location = await Promise.race([
-            getUserLocation(),
-            new Promise((_, reject) => 
-                setTimeout(() => reject(new Error('Location timeout')), 5000)
-            )
-        ]);
-        
+        // Get user location
+        const location = await getUserLocation();
         if (!location) {
-            console.log('No location available - keeping weather widget hidden');
             weatherWidget.classList.add('hidden');
-            weatherWidget.classList.remove('flex');
             return;
         }
         
-        console.log('Got location, fetching weather...');
-        
-        // Fetch weather data with timeout
-        const weather = await Promise.race([
-            getWeatherDataFree(location.latitude, location.longitude),
-            new Promise((_, reject) => 
-                setTimeout(() => reject(new Error('Weather timeout')), 8000)
-            )
-        ]);
-        
+        // Fetch weather data using free service
+        const weather = await getWeatherDataFree(location.latitude, location.longitude);
         if (!weather) {
-            console.log('No weather data available - hiding widget');
             weatherWidget.classList.add('hidden');
-            weatherWidget.classList.remove('flex');
             return;
         }
-        
-        console.log('Weather data received:', weather);
         
         // Update UI
-        weatherIcon.textContent = getWeatherEmoji(weather.main);
+        const emoji = getWeatherEmoji(weather.main, weather.temperature);
+        weatherIcon.textContent = emoji;
         weatherTemp.textContent = `${weather.temperature}°C`;
         weatherDesc.textContent = weather.description;
         
-        // Show the widget only if we have data
+        // Add refresh timestamp to the widget
+        const now = new Date();
+        const timeString = now.toLocaleTimeString('en-US', { 
+            hour: '2-digit', 
+            minute: '2-digit',
+            hour12: false 
+        });
+        weatherDesc.title = `Last updated: ${timeString}`;
+        
+        // Show the widget
         weatherWidget.classList.remove('hidden');
         weatherWidget.classList.add('flex');
         
-        console.log('Weather widget updated and shown successfully');
+        // Briefly show refresh indicator
+        const originalIcon = weatherIcon.textContent;
+        weatherIcon.textContent = '✅';
+        setTimeout(() => {
+            weatherIcon.textContent = originalIcon;
+        }, 1000);
         
     } catch (error) {
         console.error('Error loading weather:', error);
         weatherWidget.classList.add('hidden');
-        weatherWidget.classList.remove('flex');
     }
 }
+
 async function getWeatherDataFree(lat, lon) {
     console.log(`Fetching weather for coordinates: ${lat}, ${lon}`);
     
@@ -3649,22 +3654,33 @@ function updateScoreDistribution(roundsWithDetails) {
         
         if (count > 0 || ['Birdie (-1)', 'Par (E)', 'Bogey (+1)', 'Double Bogey (+2)'].includes(type)) {
             const bar = document.createElement('div');
-            bar.className = 'flex items-center justify-between p-3 bg-white rounded-lg shadow-sm';
+            bar.className = `flex items-center justify-between p-3 rounded-lg relative overflow-hidden ${color}`;
+            bar.style.background = `linear-gradient(to right, ${getColorForPercentage(color)} ${Math.max(percentage, 2)}%, rgba(255,255,255,0.9) ${Math.max(percentage, 2)}%)`;
             bar.innerHTML = `
-                <div class="flex items-center gap-3 flex-1">
-                    <span class="font-medium text-sm w-32 text-gray-700">${type}</span>
-                    <div class="flex-1 bg-gray-200 rounded-full h-6 relative overflow-hidden">
-                        <div class="h-full rounded-full ${color}" style="width: ${Math.max(percentage, 2)}%"></div>
-                        <span class="absolute inset-0 flex items-center justify-center text-xs font-semibold text-gray-700">
-                            ${percentage}%
-                        </span>
-                    </div>
-                    <span class="font-bold text-sm w-8 text-gray-700">${count}</span>
+                <span class="font-medium text-sm text-gray-800 relative z-10">${type}</span>
+                <div class="flex items-center gap-3 relative z-10">
+                    <span class="text-xs font-semibold text-gray-700">${percentage}%</span>
+                    <span class="font-bold text-sm text-gray-800 min-w-[2rem] text-right">${count}</span>
                 </div>
             `;
             distributionContainer.appendChild(bar);
         }
     });
+}
+
+function getColorForPercentage(gradientClass) {
+    const colorMap = {
+        'bg-gradient-to-r from-purple-500 to-purple-600': '#a855f7',
+        'bg-gradient-to-r from-purple-400 to-purple-500': '#c084fc',
+        'bg-gradient-to-r from-blue-500 to-blue-600': '#3b82f6',
+        'bg-gradient-to-r from-green-500 to-green-600': '#10b981',
+        'bg-gradient-to-r from-gray-400 to-gray-500': '#9ca3af',
+        'bg-gradient-to-r from-yellow-500 to-yellow-600': '#eab308',
+        'bg-gradient-to-r from-orange-500 to-orange-600': '#f97316',
+        'bg-gradient-to-r from-red-500 to-red-600': '#ef4444'
+    };
+    
+    return colorMap[gradientClass] || '#9ca3af';
 }
 
 // Add this new function for course performance
