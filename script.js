@@ -213,6 +213,18 @@ async function updateUserLocation() {
 }
 
 function toggleNewRoundSection() {
+    // Only proceed if the click wasn't on a button or interactive element
+    if (event && event.target) {
+        // Don't toggle if clicking on buttons, links, or interactive elements
+        if (event.target.tagName === 'BUTTON' || 
+            event.target.tagName === 'A' || 
+            event.target.closest('button') || 
+            event.target.closest('a') ||
+            event.target.onclick) {
+            return;
+        }
+    }
+    
     const content = document.getElementById('new-round-content');
     const chevron = document.getElementById('new-round-chevron');
     const toggle = document.getElementById('new-round-toggle');
@@ -734,14 +746,11 @@ async function loadCourses() {
                     <div class="flex items-center gap-2">
                         <h2 class="text-xl font-bold text-gray-800">New Round</h2>
                         ${userLocation ? 
-                            '<span class="px-2 py-1 bg-green-100 text-green-700 text-xs rounded-full">📍 Sorted by distance</span>' : 
+                            '<button onclick="refreshLocationFromBadge(event)" class="px-2 py-1 bg-green-100 hover:bg-green-200 text-green-700 text-xs rounded-full transition-colors duration-200 cursor-pointer">📍 Sorted by distance</button>' : 
                             '<span class="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded-full">📍 Location disabled</span>'
                         }
                     </div>
                 </div>
-                <button onclick="refreshLocation()" class="px-3 py-1 bg-blue-100 hover:bg-blue-200 text-blue-700 text-xs rounded-lg transition-colors duration-200">
-                    🔄
-                </button>
             </div>
         `;
         // Update the course selection UI - replace the existing courseSelection.innerHTML section with:
@@ -820,6 +829,164 @@ function toggleDateGroup(dateIndex) {
     content.style.maxHeight = '2000px'; // Large enough for content
     chevron.style.transform = 'rotate(180deg)';
     openDateGroup = dateIndex;
+}
+
+async function refreshLocationFromBadge(event) {
+    // Stop the event from bubbling up to the toggle button
+    event.stopPropagation();
+    event.preventDefault();
+    
+    const button = event.target;
+    const originalText = button.innerHTML;
+    button.innerHTML = '🔄 Updating...';
+    button.disabled = true;
+    
+    try {
+        // Get high-accuracy location
+        const freshLocation = await getHighAccuracyLocation();
+        if (freshLocation) {
+            currentUserLocation = freshLocation;
+            lastLocationUpdate = Date.now();
+            
+            // Save to Supabase with accuracy
+            await saveUserLocationToSupabase(
+                freshLocation.latitude, 
+                freshLocation.longitude, 
+                freshLocation.accuracy
+            );
+            
+            // Update courses with new distances
+            coursesData.forEach(course => {
+                if (course.coordinates) {
+                    try {
+                        const [lat, lon] = course.coordinates.split(',').map(Number);
+                        course.distance = calculateDistance(
+                            freshLocation.latitude, 
+                            freshLocation.longitude, 
+                            lat, 
+                            lon
+                        );
+                    } catch (error) {
+                        console.warn(`Invalid coordinates for course ${course.name}`);
+                    }
+                }
+            });
+            
+            // Re-sort and display courses
+            sortCourses(courseSortBy);
+            displayCourses();
+            
+            const accuracyText = freshLocation?.accuracy ? 
+                ` (±${Math.round(freshLocation.accuracy)}m)` : '';
+            
+            // Show success toast
+            Swal.fire({
+                title: "Location Updated",
+                text: `Courses re-sorted by distance${accuracyText}`,
+                icon: "success",
+                timer: 2000,
+                showConfirmButton: false,
+                toast: true,
+                position: 'top-end'
+            });
+            
+            // Update the badge text to show it was refreshed
+            button.innerHTML = '📍 Sorted by distance';
+        } else {
+            throw new Error('Could not get location');
+        }
+    } catch (error) {
+        console.error('Error refreshing location from badge:', error);
+        Swal.fire({
+            title: "Location Update Failed",
+            text: "Could not refresh location",
+            icon: "error",
+            timer: 2000,
+            showConfirmButton: false,
+            toast: true,
+            position: 'top-end'
+        });
+        button.innerHTML = originalText;
+    } finally {
+        button.disabled = false;
+    }
+}
+
+async function refreshLocationFromButton(event) {
+    // Stop the event from bubbling up to the toggle button
+    event.stopPropagation();
+    event.preventDefault();
+    
+    const button = event.target;
+    const originalText = button.innerHTML;
+    button.innerHTML = '🔄';
+    button.disabled = true;
+    button.style.opacity = '0.5';
+    
+    try {
+        // Get high-accuracy location
+        const freshLocation = await getHighAccuracyLocation();
+        if (freshLocation) {
+            currentUserLocation = freshLocation;
+            lastLocationUpdate = Date.now();
+            
+            // Save to Supabase with accuracy
+            await saveUserLocationToSupabase(
+                freshLocation.latitude, 
+                freshLocation.longitude, 
+                freshLocation.accuracy
+            );
+            
+            // Update courses with new distances
+            coursesData.forEach(course => {
+                if (course.coordinates) {
+                    try {
+                        const [lat, lon] = course.coordinates.split(',').map(Number);
+                        course.distance = calculateDistance(
+                            freshLocation.latitude, 
+                            freshLocation.longitude, 
+                            lat, 
+                            lon
+                        );
+                    } catch (error) {
+                        console.warn(`Invalid coordinates for course ${course.name}`);
+                    }
+                }
+            });
+            
+            // Re-sort and display courses
+            sortCourses(courseSortBy);
+            displayCourses();
+            
+            // Brief success indicator
+            button.innerHTML = '✓';
+            button.style.backgroundColor = '#dcfce7';
+            button.style.color = '#166534';
+            
+            setTimeout(() => {
+                button.innerHTML = originalText;
+                button.style.backgroundColor = '';
+                button.style.color = '';
+            }, 1500);
+        } else {
+            throw new Error('Could not get location');
+        }
+    } catch (error) {
+        console.error('Error refreshing location from button:', error);
+        // Show error state
+        button.innerHTML = '✗';
+        button.style.backgroundColor = '#fecaca';
+        button.style.color = '#dc2626';
+        
+        setTimeout(() => {
+            button.innerHTML = originalText;
+            button.style.backgroundColor = '';
+            button.style.color = '';
+        }, 1500);
+    } finally {
+        button.disabled = false;
+        button.style.opacity = '1';
+    }
 }
 
 // Function to load and display detailed hole-by-hole scorecard
@@ -1482,6 +1649,53 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
     return distance;
 }
 
+// Add comprehensive location diagnostics
+async function diagnoseLocationIssues() {
+    console.log('🔍 Starting location diagnostics...');
+    
+    // Check if we're in a secure context (HTTPS required for high accuracy)
+    console.log('Secure context (HTTPS):', window.isSecureContext);
+    
+    // Check permissions
+    if ('permissions' in navigator) {
+        try {
+            const permission = await navigator.permissions.query({name: 'geolocation'});
+            console.log('Geolocation permission:', permission.state);
+        } catch (error) {
+            console.log('Could not check geolocation permission');
+        }
+    }
+    
+    // Test different accuracy settings
+    const settings = [
+        { name: 'High Accuracy + Long Timeout', options: { enableHighAccuracy: true, timeout: 30000, maximumAge: 0 } },
+        { name: 'Network Only', options: { enableHighAccuracy: false, timeout: 10000, maximumAge: 0 } },
+        { name: 'Cached', options: { enableHighAccuracy: true, timeout: 5000, maximumAge: 300000 } }
+    ];
+    
+    for (const setting of settings) {
+        console.log(`\n📍 Testing: ${setting.name}`);
+        try {
+            const position = await new Promise((resolve, reject) => {
+                navigator.geolocation.getCurrentPosition(resolve, reject, setting.options);
+            });
+            
+            console.log(`✅ ${setting.name}:`, {
+                lat: position.coords.latitude,
+                lon: position.coords.longitude,
+                accuracy: `±${position.coords.accuracy}m`,
+                altitude: position.coords.altitude,
+                altitudeAccuracy: position.coords.altitudeAccuracy,
+                heading: position.coords.heading,
+                speed: position.coords.speed,
+                timestamp: new Date(position.timestamp).toISOString()
+            });
+        } catch (error) {
+            console.log(`❌ ${setting.name} failed:`, error.message);
+        }
+    }
+}
+
 // Get user's current position
 async function getUserLocation() {
     return new Promise((resolve, reject) => {
@@ -1491,30 +1705,118 @@ async function getUserLocation() {
             return;
         }
         
+        // Check if we're on HTTPS (required for high accuracy GPS)
+        if (!window.isSecureContext) {
+            console.warn('⚠️ Not in secure context (HTTPS required for high accuracy GPS)');
+        }
+        
         navigator.geolocation.getCurrentPosition(
             (position) => {
                 console.log('Location permission granted');
                 console.log(`GPS Accuracy: ±${position.coords.accuracy}m`);
+                
+                // Log additional GPS details for debugging
+                console.log('GPS Details:', {
+                    latitude: position.coords.latitude,
+                    longitude: position.coords.longitude,
+                    accuracy: position.coords.accuracy,
+                    altitude: position.coords.altitude,
+                    altitudeAccuracy: position.coords.altitudeAccuracy,
+                    heading: position.coords.heading,
+                    speed: position.coords.speed,
+                    timestamp: new Date(position.timestamp).toISOString(),
+                    isHighAccuracy: position.coords.accuracy < 100 ? 'YES' : 'NO'
+                });
+                
                 resolve({
                     latitude: position.coords.latitude,
                     longitude: position.coords.longitude,
                     accuracy: position.coords.accuracy,
-                    timestamp: new Date(position.timestamp)
+                    timestamp: new Date(position.timestamp),
+                    altitude: position.coords.altitude,
+                    speed: position.coords.speed,
+                    heading: position.coords.heading
                 });
             },
             (error) => {
-                console.log('Location permission denied or failed:', error.message);
-                // Always resolve with null instead of rejecting
-                // This way the weather widget will be hidden
+                console.log('Location error:', error.message, 'Code:', error.code);
+                
+                // Provide specific error messages
+                switch(error.code) {
+                    case error.PERMISSION_DENIED:
+                        console.log('❌ User denied geolocation permission');
+                        break;
+                    case error.POSITION_UNAVAILABLE:
+                        console.log('❌ Location information unavailable');
+                        break;
+                    case error.TIMEOUT:
+                        console.log('❌ Location request timed out');
+                        break;
+                    default:
+                        console.log('❌ Unknown location error');
+                        break;
+                }
                 resolve(null);
             },
             {
                 enableHighAccuracy: true,
-                timeout: 15000, // Reduced timeout
-                maximumAge: 60000 // 5 minutes
+                timeout: 30000,              // Increased to 30 seconds
+                maximumAge: 0               // Always get fresh location
             }
         );
     });
+}
+
+async function runLocationDiagnostics() {
+    const button = event.target;
+    const originalText = button.innerHTML;
+    button.innerHTML = '🔬 Running diagnostics...';
+    button.disabled = true;
+    
+    try {
+        // Open console for user to see results
+        Swal.fire({
+            title: 'GPS Diagnostics Running',
+            text: 'Check the browser console (F12) for detailed results',
+            icon: 'info',
+            timer: 3000,
+            showConfirmButton: false
+        });
+        
+        await diagnoseLocationIssues();
+        
+        // Show summary
+        Swal.fire({
+            title: 'Diagnostics Complete',
+            html: `
+                <div style="text-align: left; font-size: 14px;">
+                    <p><strong>Check the console for full results!</strong></p>
+                    <br>
+                    <p><strong>Quick fixes to try:</strong></p>
+                    <ul style="padding-left: 20px;">
+                        <li>Ensure you're on WiFi (not mobile data)</li>
+                        <li>Go outside or near a window</li>
+                        <li>Wait 1-2 minutes for GPS to lock</li>
+                        <li>Clear browser location permission and re-grant</li>
+                        <li>Use Chrome/Firefox for best GPS support</li>
+                    </ul>
+                </div>
+            `,
+            icon: 'info',
+            confirmButtonText: 'Got it!'
+        });
+        
+    } catch (error) {
+        console.error('Diagnostics failed:', error);
+        Swal.fire({
+            title: 'Diagnostics Failed',
+            text: 'Could not run location diagnostics',
+            icon: 'error'
+        });
+    } finally {
+        button.innerHTML = originalText;
+        button.disabled = false;
+    }
 }
 
 // Get multiple location readings and use the most accurate one
@@ -6202,6 +6504,8 @@ window.togglePasswordVisibility = togglePasswordVisibility;
 window.switchAuthMode = switchAuthMode;
 window.showForgotPassword = showForgotPassword;
 window.applyCrop = applyCrop;
+window.refreshLocationFromBadge = refreshLocationFromBadge;
+window.refreshLocationFromButton = refreshLocationFromButton;
 window.showSection = showSection;
 window.startRound = startRound;
 window.updateScore = updateScore;
@@ -6219,6 +6523,8 @@ window.getWeatherEmoji = getWeatherEmoji;
 window.searchUsers = searchUsers;
 window.clearSearchResults = clearSearchResults;
 window.sendFriendRequest = sendFriendRequest;
+window.diagnoseLocationIssues = diagnoseLocationIssues;
+window.runLocationDiagnostics = runLocationDiagnostics;
 window.removeFriend = removeFriend;
 window.toggleDebugRain = toggleDebugRain;
 window.addFriendToRound = addFriendToRound;

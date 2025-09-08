@@ -564,6 +564,30 @@ input:focus, select:focus, textarea:focus {
     justify-content: center;
 }
 
+/* Interactive location badge styling */
+.location-badge-button {
+    position: relative;
+    z-index: 10;
+    user-select: none;
+}
+
+.location-badge-button:active {
+    transform: scale(0.95);
+}
+
+/* Ensure the badge doesn't trigger parent click events */
+.location-badge-button:hover {
+    background-color: #dcfce7 !important;
+}
+
+/* Prevent text selection on interactive elements */
+.location-badge-button,
+.refresh-location-button {
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+}
 
 /* Ensure text doesn't break badly */
 * {
