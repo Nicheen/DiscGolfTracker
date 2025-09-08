@@ -16,6 +16,11 @@ const INITIAL_COURSE_DISPLAY_COUNT = 2;
 const scrollThreshold = 50; // Minimum scroll distance before triggering
 const fadeDistance = 100; // Distance over which to fade
 
+// Add these variables at the top of script.js
+let locationUpdateInterval = null;
+let lastLocationUpdate = null;
+let currentUserLocation = null; // Add this new variable
+
 let showAllCourses = false;
 let sortDirection = 'asc'; // 'asc' or 'desc'
 let courseSortBy = 'distance';
@@ -31,9 +36,122 @@ let showScoreDifference = true; // Default to showing score difference (total-pa
 let saveTimeout;
 let searchTimeout;
 
-// Add these variables at the top of script.js
-let locationUpdateInterval = null;
-let lastLocationUpdate = null;
+// Save user location to Supabase
+async function saveUserLocationToSupabase(latitude, longitude, accuracy = null) {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return false;
+
+    try {
+        const updateData = {
+            last_location_lat: latitude,
+            last_location_lon: longitude,
+            last_location_updated_at: new Date().toISOString()
+        };
+        
+        // Add accuracy if available
+        if (accuracy) {
+            updateData.last_location_accuracy = accuracy;
+        }
+
+        const { error } = await supabase
+            .from('profiles')
+            .update(updateData)
+            .eq('id', user.id);
+
+        if (error) {
+            console.error('Error saving location to Supabase:', error);
+            return false;
+        }
+
+        console.log('Location saved to Supabase:', { latitude, longitude, accuracy });
+        return true;
+    } catch (error) {
+        console.error('Error saving location:', error);
+        return false;
+    }
+}
+
+// Get user location from Supabase
+async function getUserLocationFromSupabase() {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+
+    try {
+        const { data, error } = await supabase
+            .from('profiles')
+            .select('last_location_lat, last_location_lon, last_location_updated_at')
+            .eq('id', user.id)
+            .single();
+
+        if (error || !data) {
+            console.log('No saved location found in Supabase');
+            return null;
+        }
+
+        const { last_location_lat, last_location_lon, last_location_updated_at } = data;
+
+        // Check if we have valid location data
+        if (!last_location_lat || !last_location_lon || !last_location_updated_at) {
+            console.log('Incomplete location data in Supabase');
+            return null;
+        }
+
+        // Check if location is still valid (less than 5 minutes old)
+        const lastUpdate = new Date(last_location_updated_at);
+        const now = new Date();
+        const timeDiff = now - lastUpdate;
+
+        console.log(`Saved location age: ${Math.round(timeDiff / 1000 / 60)} minutes`);
+
+        if (timeDiff < LOCATION_UPDATE_INTERVAL) {
+            console.log('Using cached location from Supabase');
+            return {
+                latitude: parseFloat(last_location_lat),
+                longitude: parseFloat(last_location_lon),
+                timestamp: lastUpdate,
+                fromCache: true
+            };
+        } else {
+            console.log('Cached location is too old, will fetch fresh location');
+            return null;
+        }
+    } catch (error) {
+        console.error('Error retrieving location from Supabase:', error);
+        return null;
+    }
+}
+
+// Enhanced location getter that checks cache first
+async function getUserLocationWithCache() {
+    try {
+        // First, try to get location from Supabase cache
+        const cachedLocation = await getUserLocationFromSupabase();
+        if (cachedLocation) {
+            currentUserLocation = cachedLocation;
+            lastLocationUpdate = cachedLocation.timestamp.getTime();
+            return cachedLocation;
+        }
+
+        // If no valid cached location, get fresh location
+        console.log('Fetching fresh location from GPS...');
+        const freshLocation = await getUserLocation();
+        
+        if (freshLocation) {
+            currentUserLocation = freshLocation;
+            lastLocationUpdate = Date.now();
+            
+            // Save the fresh location to Supabase
+            await saveUserLocationToSupabase(freshLocation.latitude, freshLocation.longitude);
+            
+            return freshLocation;
+        }
+
+        return null;
+    } catch (error) {
+        console.error('Error getting user location with cache:', error);
+        return null;
+    }
+}
 
 // Add this function
 function startLocationUpdates() {
@@ -59,7 +177,11 @@ async function updateUserLocation() {
     try {
         const newLocation = await getUserLocation();
         if (newLocation) {
+            currentUserLocation = newLocation;
             lastLocationUpdate = Date.now();
+
+            // Save to Supabase
+            await saveUserLocationToSupabase(newLocation.latitude, newLocation.longitude);
             
             // Update courses with new distances
             coursesData.forEach(course => {
@@ -535,10 +657,10 @@ async function loadCourses() {
         return;
     }
 
-    // Get user location (non-blocking)
+    // Get user location (with cache) - non-blocking
     let userLocation = null;
     try {
-        userLocation = await getUserLocation();
+        userLocation = await getUserLocationWithCache(); // Changed this line
     } catch (error) {
         console.log('Could not get user location, courses will not be sorted by distance');
     }
@@ -1372,9 +1494,12 @@ async function getUserLocation() {
         navigator.geolocation.getCurrentPosition(
             (position) => {
                 console.log('Location permission granted');
+                console.log(`GPS Accuracy: ±${position.coords.accuracy}m`);
                 resolve({
                     latitude: position.coords.latitude,
-                    longitude: position.coords.longitude
+                    longitude: position.coords.longitude,
+                    accuracy: position.coords.accuracy,
+                    timestamp: new Date(position.timestamp)
                 });
             },
             (error) => {
@@ -1384,12 +1509,137 @@ async function getUserLocation() {
                 resolve(null);
             },
             {
-                enableHighAccuracy: false,
-                timeout: 5000, // Reduced timeout
-                maximumAge: 300000 // 5 minutes
+                enableHighAccuracy: true,
+                timeout: 15000, // Reduced timeout
+                maximumAge: 60000 // 5 minutes
             }
         );
     });
+}
+
+// Get multiple location readings and use the most accurate one
+async function getHighAccuracyLocation(maxAttempts = 3) {
+    const locations = [];
+    
+    for (let i = 0; i < maxAttempts; i++) {
+        try {
+            console.log(`Getting location reading ${i + 1}/${maxAttempts}...`);
+            const location = await getUserLocation();
+            
+            if (location && location.accuracy) {
+                locations.push(location);
+                console.log(`Reading ${i + 1}: Accuracy ±${location.accuracy}m`);
+                
+                // If we get a very accurate reading (< 20m), use it immediately
+                if (location.accuracy < 20) {
+                    console.log('High accuracy location found, using immediately');
+                    return location;
+                }
+            }
+            
+            // Wait 2 seconds between readings to allow GPS to stabilize
+            if (i < maxAttempts - 1) {
+                await new Promise(resolve => setTimeout(resolve, 2000));
+            }
+        } catch (error) {
+            console.error(`Location reading ${i + 1} failed:`, error);
+        }
+    }
+    
+    if (locations.length === 0) {
+        console.log('No valid location readings obtained');
+        return null;
+    }
+    
+    // Return the most accurate reading
+    const bestLocation = locations.reduce((best, current) => 
+        current.accuracy < best.accuracy ? current : best
+    );
+    
+    console.log(`Using best location with accuracy ±${bestLocation.accuracy}m`);
+    return bestLocation;
+}
+
+// Check if new location is significantly different from cached location
+function isLocationSignificantlyDifferent(oldLocation, newLocation, thresholdMeters = 50) {
+    if (!oldLocation || !newLocation) return true;
+    
+    const distance = calculateDistance(
+        oldLocation.latitude, 
+        oldLocation.longitude,
+        newLocation.latitude, 
+        newLocation.longitude
+    ) * 1000; // Convert to meters
+    
+    console.log(`Location difference: ${Math.round(distance)}m`);
+    return distance > thresholdMeters;
+}
+
+// Enhanced location update with accuracy checking
+async function updateUserLocationSmart() {
+    try {
+        // Check if we have a recent cached location
+        const cachedLocation = await getUserLocationFromSupabase();
+        
+        // Get new high-accuracy location
+        const newLocation = await getHighAccuracyLocation();
+        
+        if (!newLocation) {
+            console.log('Could not get accurate location');
+            return;
+        }
+        
+        // Only update if location has changed significantly or accuracy improved
+        let shouldUpdate = false;
+        
+        if (!cachedLocation) {
+            console.log('No cached location, saving new location');
+            shouldUpdate = true;
+        } else if (newLocation.accuracy < cachedLocation.accuracy * 0.8) {
+            console.log('New location is significantly more accurate');
+            shouldUpdate = true;
+        } else if (isLocationSignificantlyDifferent(cachedLocation, newLocation, 50)) {
+            console.log('Location has changed significantly');
+            shouldUpdate = true;
+        } else {
+            console.log('Location unchanged, keeping cached version');
+            return;
+        }
+        
+        if (shouldUpdate) {
+            currentUserLocation = newLocation;
+            lastLocationUpdate = Date.now();
+            
+            // Save to Supabase
+            await saveUserLocationToSupabase(newLocation.latitude, newLocation.longitude);
+            
+            // Update course distances
+            coursesData.forEach(course => {
+                if (course.coordinates) {
+                    try {
+                        const [lat, lon] = course.coordinates.split(',').map(Number);
+                        course.distance = calculateDistance(
+                            newLocation.latitude, 
+                            newLocation.longitude, 
+                            lat, 
+                            lon
+                        );
+                    } catch (error) {
+                        console.warn(`Invalid coordinates for course ${course.name}`);
+                    }
+                }
+            });
+            
+            // Re-sort and display courses if user is on new-round section
+            const newRoundSection = document.getElementById('new-round');
+            if (newRoundSection && !newRoundSection.classList.contains('hidden')) {
+                sortCourses(courseSortBy);
+                displayCourses();
+            }
+        }
+    } catch (error) {
+        console.error('Error updating location:', error);
+    }
 }
 
 // Format distance for display
@@ -5724,9 +5974,229 @@ async function showNewPasswordForm() {
     }
 }
 
+// Settings page functions
+function showSettings() {
+    // Hide the profile content div
+    const profileContent = document.getElementById('profile').querySelector('.space-y-4');
+    if (profileContent) {
+        profileContent.style.display = 'none';
+    }
+    
+    // Hide the profile header (the one with "Your Profile" and settings button)
+    const profileHeader = document.getElementById('profile').querySelector('.flex.items-center.justify-between.mb-6');
+    if (profileHeader) {
+        profileHeader.style.display = 'none';
+    }
+    
+    // Show the settings page
+    document.getElementById('settings-page').classList.remove('hidden');
+    
+    // Initialize settings toggles with current values
+    document.getElementById('auto-location-toggle').checked = !!locationUpdateInterval;
+    document.getElementById('score-display-toggle').checked = !showScoreDifference;
+    
+    updateLocationStatus();
+}
+
+function showProfile() {
+    // Hide the settings page
+    document.getElementById('settings-page').classList.add('hidden');
+    
+    // Show the profile header
+    const profileHeader = document.getElementById('profile').querySelector('.flex.items-center.justify-between.mb-6');
+    if (profileHeader) {
+        profileHeader.style.display = 'flex';
+    }
+    
+    // Show the profile content
+    const profileContent = document.getElementById('profile').querySelector('.space-y-4');
+    if (profileContent) {
+        profileContent.style.display = 'block';
+    }
+}
+
+function toggleAutoLocation(checkbox) {
+    if (checkbox.checked) {
+        startLocationUpdates();
+        Swal.fire({
+            title: "Auto-location Enabled",
+            text: "Your location will be updated every 5 minutes",
+            icon: "success",
+            timer: 2000,
+            showConfirmButton: false
+        });
+    } else {
+        stopLocationUpdates();
+        Swal.fire({
+            title: "Auto-location Disabled", 
+            text: "Location will only update manually",
+            icon: "info",
+            timer: 2000,
+            showConfirmButton: false
+        });
+    }
+    updateLocationStatus();
+}
+
+function toggleScoreDisplayGlobal(checkbox) {
+    showScoreDifference = !checkbox.checked;
+    
+    // Update all score display toggles on the page
+    document.querySelectorAll('.switch input').forEach(input => {
+        if (input.id !== 'score-display-toggle' && input.id !== 'auto-location-toggle') {
+            input.checked = !showScoreDifference;
+        }
+    });
+    
+    // Refresh current displays if on history or progress
+    const currentSection = document.querySelector('.section:not(.hidden)');
+    if (currentSection) {
+        if (currentSection.id === 'history') {
+            loadHistory();
+        } else if (currentSection.id === 'progress') {
+            updateProgress();
+        }
+    }
+    
+    Swal.fire({
+        title: showScoreDifference ? "Showing Score Difference" : "Showing Total Scores",
+        text: showScoreDifference ? "Scores now display as ±Par" : "Scores now display as total strokes",
+        icon: "success",
+        timer: 2000,
+        showConfirmButton: false
+    });
+}
+
+async function refreshLocationManually() {
+    const button = event.target;
+    const originalText = button.innerHTML;
+    button.innerHTML = '🔄 Getting accurate location...';
+    button.disabled = true;
+    
+    try {
+        // Get high-accuracy location
+        const freshLocation = await getHighAccuracyLocation();
+        if (freshLocation) {
+            currentUserLocation = freshLocation;
+            lastLocationUpdate = Date.now();
+            
+            // Save to Supabase with accuracy
+            await saveUserLocationToSupabase(
+                freshLocation.latitude, 
+                freshLocation.longitude, 
+                freshLocation.accuracy
+            );
+            
+            // Update courses
+            coursesData.forEach(course => {
+                if (course.coordinates) {
+                    try {
+                        const [lat, lon] = course.coordinates.split(',').map(Number);
+                        course.distance = calculateDistance(
+                            freshLocation.latitude, 
+                            freshLocation.longitude, 
+                            lat, 
+                            lon
+                        );
+                    } catch (error) {
+                        console.warn(`Invalid coordinates for course ${course.name}`);
+                    }
+                }
+            });
+            
+            // Re-sort and display
+            sortCourses(courseSortBy);
+            displayCourses();
+        }
+        
+        updateLocationStatus();
+        
+        const accuracyText = freshLocation?.accuracy ? 
+            ` (±${Math.round(freshLocation.accuracy)}m accuracy)` : '';
+        
+        Swal.fire({
+            title: "Location Updated",
+            text: `Course distances have been refreshed${accuracyText}`,
+            icon: "success",
+            timer: 3000,
+            showConfirmButton: false
+        });
+    } catch (error) {
+        Swal.fire({
+            title: "Location Update Failed",
+            text: "Could not get accurate location",
+            icon: "error",
+            timer: 2000,
+            showConfirmButton: false
+        });
+    } finally {
+        button.innerHTML = originalText;
+        button.disabled = false;
+    }
+}
+
+function clearCacheData() {
+    Swal.fire({
+        title: 'Clear Cache Data?',
+        text: 'This will clear cached course and profile data. The app will reload fresh data.',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonColor: '#f97316',
+        cancelButtonColor: '#6c757d',
+        confirmButtonText: 'Yes, clear cache'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            // Clear caches
+            profilePictureCache = {};
+            coursesCacheTime = null;
+            coursesData = [];
+            
+            // Clear any browser storage if used
+            try {
+                localStorage.removeItem('newRoundExpanded');
+            } catch (error) {
+                console.log('No localStorage to clear');
+            }
+            
+            // Reload data
+            loadCourses();
+            
+            Swal.fire({
+                title: "Cache Cleared",
+                text: "Fresh data has been loaded",
+                icon: "success",
+                timer: 2000,
+                showConfirmButton: false
+            });
+        }
+    });
+}
+
+function updateLocationStatus() {
+    const statusElement = document.getElementById('location-status');
+    if (!statusElement) return;
+    
+    if (locationUpdateInterval) {
+        const nextUpdate = lastLocationUpdate ? 
+            new Date(lastLocationUpdate + LOCATION_UPDATE_INTERVAL).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) :
+            'Soon';
+        statusElement.textContent = `Auto-updating enabled • Next update: ${nextUpdate}`;
+        statusElement.className = 'text-xs text-green-600';
+    } else {
+        statusElement.textContent = 'Auto-updating disabled • Manual refresh only';
+        statusElement.className = 'text-xs text-gray-500';
+    }
+}
+
 // Add to window exports
 window.handlePasswordReset = handlePasswordReset;
-
+window.showSettings = showSettings;
+window.showProfile = showProfile;
+window.toggleAutoLocation = toggleAutoLocation;
+window.toggleScoreDisplayGlobal = toggleScoreDisplayGlobal;
+window.refreshLocationManually = refreshLocationManually;
+window.clearCacheData = clearCacheData;
+window.updateLocationStatus = updateLocationStatus;
 // Add these to your window exports at the bottom of script.js
 window.togglePasswordVisibility = togglePasswordVisibility;
 window.switchAuthMode = switchAuthMode;
@@ -5735,6 +6205,9 @@ window.applyCrop = applyCrop;
 window.showSection = showSection;
 window.startRound = startRound;
 window.updateScore = updateScore;
+window.getHighAccuracyLocation = getHighAccuracyLocation;
+window.updateUserLocationSmart = updateUserLocationSmart;
+window.isLocationSignificantlyDifferent = isLocationSignificantlyDifferent;
 window.signOut = signOut;
 window.signUp = signUp;
 window.signIn = signIn;
@@ -5792,6 +6265,9 @@ window.hideLoadingScreen = hideLoadingScreen;
 window.debugRainSystem = debugRainSystem;
 window.updateCharacterCount = updateCharacterCount;
 window.refreshLocation = refreshLocation;
+window.saveUserLocationToSupabase = saveUserLocationToSupabase;
+window.getUserLocationFromSupabase = getUserLocationFromSupabase;
+window.getUserLocationWithCache = getUserLocationWithCache;
 
 window.addEventListener("DOMContentLoaded", async () => {
     // Check for password reset parameters in both search and hash
