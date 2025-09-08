@@ -11,6 +11,7 @@ const supabase = createClient(supabaseUrl, supabaseKey, {
 
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 const COURSES_CACHE_DURATION = 10 * 60 * 1000; // 10 minutes
+const LOCATION_UPDATE_INTERVAL = 5 * 60 * 1000; // 5 minutes
 const INITIAL_COURSE_DISPLAY_COUNT = 2;
 const scrollThreshold = 50; // Minimum scroll distance before triggering
 const fadeDistance = 100; // Distance over which to fade
@@ -29,6 +30,65 @@ let expandedRoundItems = new Set();
 let showScoreDifference = true; // Default to showing score difference (total-par)
 let saveTimeout;
 let searchTimeout;
+
+// Add these variables at the top of script.js
+let locationUpdateInterval = null;
+let lastLocationUpdate = null;
+
+// Add this function
+function startLocationUpdates() {
+    // Update immediately if no recent location
+    if (!lastLocationUpdate || (Date.now() - lastLocationUpdate > LOCATION_UPDATE_INTERVAL)) {
+        updateUserLocation();
+    }
+    
+    // Set up periodic updates
+    locationUpdateInterval = setInterval(updateUserLocation, LOCATION_UPDATE_INTERVAL);
+}
+
+// Add this function
+function stopLocationUpdates() {
+    if (locationUpdateInterval) {
+        clearInterval(locationUpdateInterval);
+        locationUpdateInterval = null;
+    }
+}
+
+// Add this function
+async function updateUserLocation() {
+    try {
+        const newLocation = await getUserLocation();
+        if (newLocation) {
+            lastLocationUpdate = Date.now();
+            
+            // Update courses with new distances
+            coursesData.forEach(course => {
+                if (course.coordinates) {
+                    try {
+                        const [lat, lon] = course.coordinates.split(',').map(Number);
+                        course.distance = calculateDistance(
+                            newLocation.latitude, 
+                            newLocation.longitude, 
+                            lat, 
+                            lon
+                        );
+                    } catch (error) {
+                        console.warn(`Invalid coordinates for course ${course.name}`);
+                    }
+                }
+            });
+            
+            // Re-sort and display courses if user is on new-round section
+            const newRoundSection = document.getElementById('new-round');
+            if (newRoundSection && !newRoundSection.classList.contains('hidden')) {
+                sortCourses(courseSortBy);
+                displayCourses();
+            }
+        }
+    } catch (error) {
+        console.error('Error updating location:', error);
+    }
+}
 
 function toggleNewRoundSection() {
     const content = document.getElementById('new-round-content');
@@ -145,8 +205,20 @@ function testRainVisibility() {
     }, 5000);
 }
 
+function handleShowMoreLess() {
+    // This gets called before displayCourses() when show more/less is clicked
+    const rainStates = preserveRainState();
+    
+    // Store in a temporary global variable
+    window._tempRainStates = rainStates;
+}
+
 // Display courses with peek preview functionality
+// Replace the displayCourses function with this version that includes the fix:
 function displayCourses() {
+    // Preserve rain state before clearing
+    const rainStates = preserveRainState();
+    
     const coursesContainer = document.getElementById('courses-container');
     if (!coursesContainer) return;
     
@@ -174,8 +246,16 @@ function displayCourses() {
             // Peek card styling
             cardClasses += ' peek-card opacity-40 hover:opacity-60 pointer-events-auto overflow-hidden';
             courseCard.onclick = () => {
+                handleShowMoreLess();
                 showAllCourses = true;
                 displayCourses();
+                // Restore rain after a delay
+                setTimeout(() => {
+                    if (window._tempRainStates) {
+                        restoreRainState(window._tempRainStates);
+                        delete window._tempRainStates;
+                    }
+                }, 100);
             };
         } else {
             // Regular card styling
@@ -187,6 +267,7 @@ function displayCourses() {
         courseCard.style.position = 'relative';
         courseCard.style.overflow = 'hidden';
 
+        // ... rest of the course card HTML creation ...
         courseCard.innerHTML = `
             ${isPeekCard ? '<div class="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-white z-10 pointer-events-none"></div>' : ''}
             <div class="p-3 ${isPeekCard ? 'relative z-0' : ''} relative">
@@ -232,11 +313,6 @@ function displayCourses() {
                 </div>
             ` : ''}
         `;
-
-        // Add rain animation if it's raining
-        if (course.weather && course.weather.isRaining && !isPeekCard) {
-            createRainAnimation(courseCard);
-        }
         
         coursesContainer.appendChild(courseCard);
     });
@@ -247,11 +323,22 @@ function displayCourses() {
         showLessButton.className = 'w-full py-2 text-xs text-gray-600 hover:text-gray-800 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors mt-2';
         showLessButton.textContent = 'Show Less';
         showLessButton.onclick = () => {
+            handleShowMoreLess();
             showAllCourses = false;
             displayCourses();
+            // Restore rain after a delay
+            setTimeout(() => {
+                if (window._tempRainStates) {
+                    restoreRainState(window._tempRainStates);
+                    delete window._tempRainStates;
+                }
+            }, 100);
         };
         coursesContainer.appendChild(showLessButton);
     }
+    
+    // Restore rain state after rendering
+    restoreRainState(rainStates);
 }
 
 function toggleDebugRain() {
@@ -268,14 +355,50 @@ function toggleDebugRain() {
     }
     
     firstCourse.weather.isRaining = !firstCourse.weather.isRaining;
-    firstCourse.weather.temperature = firstCourse.weather.temperature || 15;
-    firstCourse.weather.description = firstCourse.weather.isRaining ? 'moderate rain' : 'clear sky';
-    firstCourse.weather.main = firstCourse.weather.isRaining ? 'Rain' : 'Clear';
     
     console.log(`Rain debug: ${firstCourse.weather.isRaining ? 'ON' : 'OFF'} for ${firstCourse.name}`);
     
-    // Refresh the display
-    displayCourses();
+    // Find the first course card and apply/remove rain immediately
+    setTimeout(() => {
+        const firstCard = document.querySelector('.course-card');
+        if (firstCard) {
+            if (firstCourse.weather.isRaining) {
+                if (!firstCard.classList.contains('has-rain')) {
+                    console.log('Adding rain to first course card');
+                    createRainAnimation(firstCard);
+                }
+            } else {
+                if (firstCard.classList.contains('has-rain')) {
+                    console.log('Removing rain from first course card');
+                    stopRainAnimation(firstCard);
+                }
+            }
+        }
+    }, 50);
+}
+
+// Add this improved debug function
+function debugRainSystem() {
+    console.log('=== Rain System Debug ===');
+    
+    const rainCards = document.querySelectorAll('.course-card.has-rain');
+    console.log(`Rain cards found: ${rainCards.length}`);
+    
+    const allCards = document.querySelectorAll('.course-card');
+    console.log(`Total course cards: ${allCards.length}`);
+    
+    rainCards.forEach((card, index) => {
+        console.log(`Rain card ${index}:`, {
+            hasRainClass: card.classList.contains('has-rain'),
+            inDOM: document.contains(card),
+            hasCanvas: !!card.querySelector('canvas'),
+            cardSize: `${card.offsetWidth}x${card.offsetHeight}`
+        });
+    });
+    
+    // Check course data
+    const rainingCourses = coursesData.filter(c => c.weather?.isRaining);
+    console.log(`Courses with rain data: ${rainingCourses.length}`, rainingCourses.map(c => c.name));
 }
 
 // Call this function directly in console or add a button
@@ -387,11 +510,23 @@ async function signOut() {
             timer: 2000,
             showConfirmButton: false
         });
+        stopLocationUpdates();
         signOutSuccessful();
     }
 }
 
 // Load profile data when logged in
+async function refreshLocation() {
+    const button = event.target;
+    const originalText = button.innerHTML;
+    button.innerHTML = '🔄 Updating...';
+    button.disabled = true;
+    
+    await updateUserLocation();
+    
+    button.innerHTML = originalText;
+    button.disabled = false;
+}
 
 async function loadCourses() {
     // Check if we have recent cached data
@@ -470,6 +605,7 @@ async function loadCourses() {
 
     if (courseSelection) {
         // In your loadCourses function, replace the distance tracker section with:
+        // Add this to the course selection UI in loadCourses()
         distanceElement.innerHTML = `
             <div class="flex items-center justify-between w-full">
                 <div class="flex items-center gap-1">
@@ -481,6 +617,9 @@ async function loadCourses() {
                         }
                     </div>
                 </div>
+                <button onclick="refreshLocation()" class="px-3 py-1 bg-blue-100 hover:bg-blue-200 text-blue-700 text-xs rounded-lg transition-colors duration-200">
+                    🔄
+                </button>
             </div>
         `;
         // Update the course selection UI - replace the existing courseSelection.innerHTML section with:
@@ -2202,6 +2341,36 @@ function isRainyWeather(description, main) {
     return rainKeywords.some(keyword => weatherText.includes(keyword));
 }
 
+// Add this debug function
+function debugRainCanvas() {
+    const rainCards = document.querySelectorAll('.course-card.has-rain');
+    console.log(`Found ${rainCards.length} rain cards`);
+    
+    rainCards.forEach((card, index) => {
+        const canvas = card.querySelector('canvas');
+        if (canvas) {
+            console.log(`Card ${index} canvas:`, {
+                width: canvas.width,
+                height: canvas.height,
+                style: canvas.style.cssText,
+                visible: canvas.offsetWidth > 0 && canvas.offsetHeight > 0
+            });
+            
+            // Draw a test rectangle to verify canvas is working
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = 'red';
+            ctx.fillRect(10, 10, 50, 20);
+            console.log('Drew test rectangle on canvas');
+        } else {
+            console.log(`Card ${index} has no canvas`);
+        }
+    });
+}
+
+// Add to window exports
+window.debugRainCanvas = debugRainCanvas;
+
+// Replace the existing addRainAnimationStyles function
 function addRainAnimationStyles() {
     if (document.getElementById('rain-animation-styles')) return;
     
@@ -2213,123 +2382,238 @@ function addRainAnimationStyles() {
             overflow: hidden !important;
         }
         
-        .rain-container {
-            position: absolute !important;
-            top: 0 !important;
-            left: 0 !important;
-            width: 100% !important;
-            height: 100% !important;
-            overflow: hidden !important;
-            pointer-events: none !important;
-            z-index: 5 !important;
-            border-radius: inherit;
-        }
-        
-        .rain-drop {
-            position: absolute !important;
-            background: linear-gradient(to bottom, 
-                rgba(59, 130, 246, 0.7), 
-                rgba(59, 130, 246, 0.4), 
-                rgba(59, 130, 246, 0.1)) !important;
-            width: 1.5px !important;
-            height: 15px !important;
-            border-radius: 0 0 50% 50% !important;
-            animation: rainDrop linear infinite !important;
-            transform-origin: center bottom !important;
-        }
-        
-        @keyframes rainDrop {
-            0% {
-                transform: translateY(-50px) translateX(-2px) !important;
-                opacity: 0 !important;
-            }
-            10% {
-                opacity: 0.8 !important;
-            }
-            90% {
-                opacity: 0.6 !important;
-            }
-            100% {
-                transform: translateY(200px) translateX(2px) !important;
-                opacity: 0 !important;
-            }
-        }
-        
-        .rain-overlay {
-            position: absolute !important;
-            top: 0 !important;
-            left: 0 !important;
-            width: 100% !important;
-            height: 100% !important;
-            background: linear-gradient(135deg, 
-                rgba(59, 130, 246, 0.08) 0%, 
-                rgba(147, 197, 253, 0.05) 30%,
-                rgba(59, 130, 246, 0.08) 60%,
-                rgba(147, 197, 253, 0.03) 100%) !important;
-            pointer-events: none !important;
-            z-index: 4 !important;
-            border-radius: inherit;
-        }
-        
-        .weather-badge {
-            position: absolute !important;
-            top: 8px !important;
-            left: 8px !important;
-            background: rgba(59, 130, 246, 0.95) !important;
-            color: white !important;
-            padding: 3px 8px !important;
-            border-radius: 12px !important;
-            font-size: 10px !important;
-            font-weight: 600 !important;
-            z-index: 20 !important;
-            backdrop-filter: blur(4px) !important;
-            display: flex !important;
-            align-items: center !important;
-            gap: 3px !important;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
-        }
-        
         .course-card.has-rain {
             background: linear-gradient(135deg, 
-                rgba(219, 234, 254, 0.3) 0%, 
-                rgba(239, 246, 255, 0.2) 100%) !important;
+                rgba(156, 163, 175, 0.15) 0%, 
+                rgba(209, 213, 219, 0.1) 100%) !important;
+            border-color: rgba(156, 163, 175, 0.3) !important;
+        }
+        
+        /* Selected course should override rain styling */
+        .course-card.selected-course {
+            background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%) !important;
+            border-color: #3b82f6 !important;
+            box-shadow: 0 2px 8px rgba(59, 130, 246, 0.25) !important;
+        }
+        
+        /* Rain overlay for selected course should be more subtle */
+        .course-card.selected-course.has-rain {
+            background: linear-gradient(135deg, 
+                rgba(239, 246, 255, 0.9) 0%, 
+                rgba(219, 234, 254, 0.8) 100%) !important;
+        }
+        
+        .course-card canvas {
+            border-radius: inherit !important;
         }
     `;
     document.head.appendChild(styles);
 }
 
+// Replace the existing stopRainAnimation function
+// Replace the existing stopRainAnimation function
+function stopRainAnimation(container) {
+    container.classList.remove('has-rain');
+    
+    // Remove rain elements
+    const canvas = container._rainCanvas;
+    if (canvas && canvas.parentNode === container) {
+        container.removeChild(canvas);
+    }
+    
+    const overlay = container.querySelector('[style*="linear-gradient"][style*="107, 114, 128"]');
+    if (overlay && overlay.parentNode === container) {
+        container.removeChild(overlay);
+    }
+    
+    delete container._rainCanvas;
+}
+
+// Add to window exports
+window.stopRainAnimation = stopRainAnimation;
+
+// Replace the createRainAnimation function (remove badge creation)
 function createRainAnimation(container) {
     // Add rain class to container
     container.classList.add('has-rain');
     
-    const rainContainer = document.createElement('div');
-    rainContainer.className = 'rain-container';
+    // Create rain system with continuous looping
+    const rainDrops = [];
     
-    // Create more visible rain drops
-    for (let i = 0; i < 25; i++) {
-        const drop = document.createElement('div');
-        drop.className = 'rain-drop';
+    // Create canvas for rain animation
+    const canvas = document.createElement('canvas');
+    canvas.style.position = 'absolute';
+    canvas.style.top = '0';
+    canvas.style.left = '0';
+    canvas.style.width = '100%';
+    canvas.style.height = '100%';
+    canvas.style.pointerEvents = 'none';
+    canvas.style.zIndex = '5';
+    canvas.style.borderRadius = 'inherit';
+    
+    const ctx = canvas.getContext('2d');
+    
+    // Set canvas size and initialize drops
+    const initializeRain = () => {
+        canvas.width = container.offsetWidth || 200;
+        canvas.height = container.offsetHeight || 150;
         
-        // Randomize drop properties for better visibility
-        const leftPosition = Math.random() * 100;
-        const animationDelay = Math.random() * 3;
-        const animationDuration = 1 + Math.random() * 1; // Slower drops
+        // Clear existing drops
+        rainDrops.length = 0;
         
-        drop.style.left = `${leftPosition}%`;
-        drop.style.animationDelay = `${animationDelay}s`;
-        drop.style.animationDuration = `${animationDuration}s`;
+        // Create initial rain drops spread across time
+        for (let i = 0; i < 30; i++) {
+            rainDrops.push({
+                x: Math.random() * canvas.width,
+                y: Math.random() * canvas.height - canvas.height,
+                vx: (Math.random() - 0.5) * 0.5,
+                vy: 2 + Math.random() * 3,
+                width: 1 + Math.random() * 1,
+                height: 8 + Math.random() * 12,
+                opacity: 0.4 + Math.random() * 0.4
+            });
+        }
+    };
+    
+    initializeRain();
+    
+    // Animation function - continuous loop
+    function updateRain() {
+        if (!container.classList.contains('has-rain')) {
+            return;
+        }
         
-        rainContainer.appendChild(drop);
+        if (!document.contains(container)) {
+            return;
+        }
+        
+        // Clear canvas
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // Update and draw each rain drop
+        for (let i = 0; i < rainDrops.length; i++) {
+            const drop = rainDrops[i];
+            
+            // Update position
+            drop.x += drop.vx;
+            drop.y += drop.vy;
+            
+            // Draw rain drop with gray color instead of blue
+            ctx.save();
+            ctx.globalAlpha = drop.opacity;
+            ctx.fillStyle = `rgba(107, 114, 128, ${drop.opacity * 0.6})`; // Gray rain drops
+            ctx.fillRect(drop.x, drop.y, drop.width, drop.height);
+            ctx.restore();
+            
+            // Reset drop when it goes off screen
+            if (drop.y > canvas.height + 20) {
+                drop.x = Math.random() * canvas.width;
+                drop.y = -20;
+                drop.vx = (Math.random() - 0.5) * 0.5;
+                drop.vy = 2 + Math.random() * 3;
+            }
+            
+            if (drop.x < -10 || drop.x > canvas.width + 10) {
+                drop.x = Math.random() * canvas.width;
+            }
+        }
+        
+        requestAnimationFrame(updateRain);
     }
     
-    // Add rain overlay for atmosphere
+    // Add rain overlay with gray tones instead of blue
     const overlay = document.createElement('div');
-    overlay.className = 'rain-overlay';
-    rainContainer.appendChild(overlay);
+    overlay.style.position = 'absolute';
+    overlay.style.top = '0';
+    overlay.style.left = '0';
+    overlay.style.width = '100%';
+    overlay.style.height = '100%';
+    overlay.style.background = 'linear-gradient(135deg, rgba(107, 114, 128, 0.04) 0%, rgba(156, 163, 175, 0.02) 50%, rgba(107, 114, 128, 0.04) 100%)';
+    overlay.style.pointerEvents = 'none';
+    overlay.style.zIndex = '4';
+    overlay.style.borderRadius = 'inherit';
     
-    // Insert rain container as first child to ensure proper layering
-    container.insertBefore(rainContainer, container.firstChild);
+    // Insert elements into container (no badge)
+    container.insertBefore(overlay, container.firstChild);
+    container.insertBefore(canvas, container.firstChild);
+    
+    // Start animation
+    updateRain();
+    
+    // Store canvas reference for cleanup
+    container._rainCanvas = canvas;
 }
+
+// Replace the existing preserveRainState function
+function preserveRainState() {
+    const rainStates = [];
+    
+    // Get rain states from the coursesData directly instead of DOM
+    coursesData.forEach((course, index) => {
+        if (course.weather && course.weather.isRaining) {
+            rainStates.push({
+                courseId: course.id,
+                courseName: course.name,
+                index: index
+            });
+        }
+    });
+    
+    console.log('Preserving rain states:', rainStates);
+    return rainStates;
+}
+
+// Replace the existing restoreRainState function
+function restoreRainState(rainStates) {
+    if (rainStates.length === 0) return;
+    
+    console.log('Restoring rain states:', rainStates);
+    
+    // Wait a bit for DOM to be ready
+    setTimeout(() => {
+        // Apply rain to matching course cards
+        const courseCards = document.querySelectorAll('.course-card');
+        
+        courseCards.forEach((card, cardIndex) => {
+            // Find if this card should have rain based on preserved state
+            const shouldHaveRain = rainStates.some(state => {
+                // Match by course index in the current display
+                return state.index === cardIndex;
+            });
+            
+            if (shouldHaveRain && !card.classList.contains('has-rain')) {
+                console.log(`Restoring rain to card ${cardIndex}`);
+                createRainAnimation(card);
+            }
+        });
+    }, 50);
+}
+
+// Add this test function
+function testRainAnimation() {
+    console.log('Testing rain animation...');
+    
+    // Create a test element to verify CSS is working
+    const testDrop = document.createElement('div');
+    testDrop.className = 'rain-drop';
+    testDrop.style.position = 'fixed';
+    testDrop.style.top = '10px';
+    testDrop.style.left = '50px';
+    testDrop.style.zIndex = '10000';
+    document.body.appendChild(testDrop);
+    
+    // Remove after 5 seconds
+    setTimeout(() => {
+        if (document.body.contains(testDrop)) {
+            document.body.removeChild(testDrop);
+        }
+    }, 5000);
+    
+    console.log('Test rain drop created - you should see it falling from the top left');
+}
+
+// Add to window exports
+window.testRainAnimation = testRainAnimation;
 
 // Add helper function for weather codes
 function getWeatherDescription(weathercode) {
@@ -2769,30 +3053,34 @@ async function updateHoleDisplay(course, players, holeIndex) {
         const playerCard = document.createElement('div');
         playerCard.className = 'bg-white rounded-xl p-4 shadow-lg border-2 border-gray-100';
         playerCard.innerHTML = `
-            <div class="flex items-center justify-between">
-                <div class="flex items-center gap-3">
-                    <img src="${profilePicSrc}" alt="${player}" 
-                        class="w-12 h-12 rounded-full border-2 border-indigo-200 object-cover">
-                    <div>
-                        <div class="font-bold text-gray-800">${player}</div>
-                        <div class="text-sm text-gray-600">${scoreText} (${currentScore || par})</div>
-                    </div>
-                </div>
-                <div class="flex items-center gap-2">
-                    <button onclick="updateScore('${player}', ${holeIndex}, -1)" 
-                            class="w-10 h-10 bg-red-500 hover:bg-red-600 text-white rounded-full text-lg font-bold transition-colors duration-200 flex items-center justify-center">
-                        −
-                    </button>
-                    <div class="w-12 h-12 flex items-center justify-center font-bold text-lg bg-gray-100 rounded-lg border-2 border-gray-300">
-                        <span id="score-${player}-${holeIndex}">${displayScore}</span>
-                    </div>
-                    <button onclick="updateScore('${player}', ${holeIndex}, 1)" 
-                            class="w-10 h-10 bg-green-500 hover:bg-green-600 text-white rounded-full text-lg font-bold transition-colors duration-200 flex items-center justify-center">
-                        +
-                    </button>
+        <div class="flex items-center justify-between gap-3">
+            <div class="flex items-center gap-3 min-w-0 flex-1">
+                <img src="${profilePicSrc}" alt="${player}" 
+                    class="w-10 h-10 rounded-full border-2 border-indigo-200 object-cover flex-shrink-0">
+                <div class="min-w-0 flex-1">
+                    <div class="font-bold text-gray-800 text-sm truncate" title="${player}">${player}</div>
+                    <div class="text-xs text-gray-600">${scoreText}</div>
                 </div>
             </div>
-        `;
+            <div class="flex items-center gap-2 flex-shrink-0">
+                <button onclick="updateScore('${player}', ${holeIndex}, -1)" 
+                        class="score-btn score-decrease">
+                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M20 12H4"></path>
+                    </svg>
+                </button>
+                <div class="score-display-new">
+                    <span id="score-${player}-${holeIndex}">${displayScore}</span>
+                </div>
+                <button onclick="updateScore('${player}', ${holeIndex}, 1)" 
+                        class="score-btn score-increase">
+                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M12 4v16m8-8H4"></path>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    `;
         return playerCard;
     };
 
@@ -2946,6 +3234,11 @@ async function deleteCurrentRound() {
             currentRound = null;
             document.getElementById('scorecard').style.display = 'none';
             document.getElementById('course').value = '';
+
+            // Always expand new round section after deleting - ADDED
+            if (!isNewRoundExpanded) {
+                toggleNewRoundSection();
+            }
 
             Swal.fire({
                 title: "Round Deleted!",
@@ -3297,6 +3590,54 @@ async function finishRound() {
     if (!user) return;
 
     try {
+        // Get course data to check total holes
+        const course = coursesData.find(c => c.id == currentRound.courseId);
+        if (!course) {
+            Swal.fire({
+                icon: "error",
+                title: "Error",
+                text: "Could not find course information",
+            });
+            return;
+        }
+
+        // Check if all players have completed all holes
+        const incompleteData = checkForIncompleteRounds(course);
+        
+        if (incompleteData.hasIncomplete) {
+            const result = await Swal.fire({
+                title: 'Incomplete Round Detected',
+                html: `
+                    <div style="text-align: left;">
+                        <p style="margin-bottom: 15px;">Some players haven't completed all holes:</p>
+                        <div style="background: #f8f9fa; padding: 12px; border-radius: 8px; margin: 15px 0;">
+                            ${incompleteData.details.map(detail => 
+                                `<div style="margin-bottom: 8px;">
+                                    <strong>${detail.player}:</strong> ${detail.completedHoles}/${course.holes.length} holes completed
+                                </div>`
+                            ).join('')}
+                        </div>
+                        <p style="color: #666; font-size: 14px;">
+                            Only completed holes will be counted in the final scores. 
+                            Are you sure you want to finish this round?
+                        </p>
+                    </div>
+                `,
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#f59e0b',
+                cancelButtonColor: '#6c757d',
+                confirmButtonText: 'Yes, Finish Round',
+                cancelButtonText: 'Continue Playing',
+                width: '90%',
+                maxWidth: '500px'
+            });
+
+            if (!result.isConfirmed) {
+                return; // User chose to continue playing
+            }
+        }
+
         // Calculate final scores - include both registered users and guests
         const finalScoresByUsername = {};
 
@@ -3386,7 +3727,7 @@ async function finishRound() {
         // Clear current round
         currentRound = null;
 
-        // Find this section in your finishRound function:
+        // Show success message
         Swal.fire({
             title: "Round Completed!",
             text: 'Your round has been saved successfully for all players.',
@@ -3395,7 +3736,7 @@ async function finishRound() {
             showConfirmButton: false
         });
 
-        showCanvasConfetti(); // For canvas version
+        showCanvasConfetti();
         
         document.getElementById('scorecard').style.display = 'none';
         document.getElementById('course').value = '';
@@ -3684,6 +4025,45 @@ function createRoundItem(round, itemId, currentUsername, userId) {
         </div>
     </div>
 `;
+}
+
+function checkForIncompleteRounds(course) {
+    const totalHoles = course.holes.length;
+    const incompleteDetails = [];
+    let hasIncomplete = false;
+
+    Object.keys(currentRound.scores).forEach(playerId => {
+        const scores = currentRound.scores[playerId];
+        const username = currentRound.playerIdToUsername[playerId];
+        
+        if (username) {
+            // Count holes with scores > 0
+            const completedHoles = scores.filter(score => score && score > 0).length;
+            
+            if (completedHoles < totalHoles && completedHoles > 0) {
+                // Player has started but not finished
+                hasIncomplete = true;
+                incompleteDetails.push({
+                    player: username,
+                    completedHoles: completedHoles,
+                    totalHoles: totalHoles
+                });
+            } else if (completedHoles === 0) {
+                // Player hasn't played any holes
+                hasIncomplete = true;
+                incompleteDetails.push({
+                    player: username,
+                    completedHoles: 0,
+                    totalHoles: totalHoles
+                });
+            }
+        }
+    });
+
+    return {
+        hasIncomplete,
+        details: incompleteDetails
+    };
 }
 
 // Update the toggleScoreDisplay function:
@@ -4510,6 +4890,7 @@ async function deleteRound(roundId) {
 
 // Add this new function to your script.js file
 async function loginSuccessful() {
+    addRainAnimationStyles();
     document.getElementById('login-screen').style.display = 'none';
     document.getElementById('main-app').style.display = 'block';
     
@@ -4535,6 +4916,7 @@ async function loginSuccessful() {
         await Promise.all([
             loadProfile(),
             loadCourses(),
+            startLocationUpdates(),
             loadWeather()
         ]);
         
@@ -4827,23 +5209,19 @@ async function loadProfile() {
 
             if (createError) {
                 console.error('Error creating profile:', createError);
-                // Use fallback values
                 document.getElementById("profile-username").value = newProfile.username;
                 document.getElementById("profile-bio").value = newProfile.bio;
             } else {
-                // Use created profile
                 document.getElementById("profile-username").value = createdProfile.username || newProfile.username;
                 document.getElementById("profile-bio").value = createdProfile.bio || newProfile.bio;
             }
             
-            // Set default profile picture
             const defaultPicSrc = "./images/user.png";
             document.getElementById("profile-picture-preview").src = defaultPicSrc;
             document.getElementById("user-avatar").src = defaultPicSrc;
             
         } else if (error) {
             console.error('Error loading profile:', error);
-            // Set fallback values
             document.getElementById("profile-username").value = `User_${user.id.substring(0, 8)}`;
             document.getElementById("profile-bio").value = 'New disc golf player';
             document.getElementById("profile-picture-preview").src = "./images/user.png";
@@ -4854,19 +5232,29 @@ async function loadProfile() {
             document.getElementById("profile-username").value = data.username || `User_${user.id.substring(0, 8)}`;
             document.getElementById("profile-bio").value = data.bio || 'New disc golf player';
             
-            // Update profile picture
             const profilePicSrc = data.profile_picture_base64 || "./images/user.png";
             document.getElementById("profile-picture-preview").src = profilePicSrc;
             document.getElementById("user-avatar").src = profilePicSrc;
         }
 
+        // Initialize character counters after loading data
+        setTimeout(() => {
+            updateCharacterCount('profile-username', 'username-count', 20);
+            updateCharacterCount('profile-bio', 'bio-count', 25);
+        }, 100);
+
     } catch (error) {
         console.error('Unexpected error loading profile:', error);
-        // Set fallback values
         document.getElementById("profile-username").value = `User_${user.id.substring(0, 8)}`;
         document.getElementById("profile-bio").value = 'New disc golf player';
         document.getElementById("profile-picture-preview").src = "./images/user.png";
         document.getElementById("user-avatar").src = "./images/user.png";
+        
+        // Initialize character counters for fallback values
+        setTimeout(() => {
+            updateCharacterCount('profile-username', 'username-count', 20);
+            updateCharacterCount('profile-bio', 'bio-count', 25);
+        }, 100);
     }
 }
 
@@ -4878,12 +5266,30 @@ async function saveProfile() {
     const username = document.getElementById("profile-username").value.trim();
     const bio = document.getElementById("profile-bio").value.trim();
 
-    // Validate username
+    // Enhanced validation with character limits
     if (!username || username.length < 2) {
         Swal.fire({
             icon: "error",
             title: "Invalid Username",
             text: "Username must be at least 2 characters long.",
+        });
+        return;
+    }
+
+    if (username.length > 20) {
+        Swal.fire({
+            icon: "error",
+            title: "Username Too Long",
+            text: "Username cannot exceed 20 characters.",
+        });
+        return;
+    }
+
+    if (bio.length > 25) {
+        Swal.fire({
+            icon: "error",
+            title: "Bio Too Long",
+            text: "Bio cannot exceed 25 characters.",
         });
         return;
     }
@@ -4907,6 +5313,7 @@ async function saveProfile() {
         return;
     }
 
+    // Rest of the function remains the same...
     try {
         let profileData = {
             id: user.id,
@@ -4915,13 +5322,10 @@ async function saveProfile() {
             updated_at: new Date()
         };
 
-        // Add profile picture if selected
         if (selectedProfilePicture) {
             profileData.profile_picture_base64 = selectedProfilePicture;
-            
-            // Update navigation avatar
             document.getElementById("user-avatar").src = selectedProfilePicture;
-            selectedProfilePicture = null; // Clear the selected file
+            selectedProfilePicture = null;
         }
 
         const { error } = await supabase.from("profiles").upsert(profileData);
@@ -4943,6 +5347,34 @@ async function saveProfile() {
             title: "Error Saving Profile",
             text: error.message,
         });
+    }
+}
+
+function updateCharacterCount(inputId, counterId, maxLength) {
+    const input = document.getElementById(inputId);
+    const counter = document.getElementById(counterId);
+    
+    if (!input || !counter) return;
+    
+    const currentLength = input.value.length;
+    counter.textContent = `${currentLength}/${maxLength}`;
+    
+    // Change color based on remaining characters
+    if (currentLength >= maxLength) {
+        counter.className = 'absolute right-3 top-1/2 transform -translate-y-1/2 text-xs text-red-500 font-bold';
+        if (inputId === 'profile-bio') {
+            counter.className = 'absolute right-3 bottom-3 text-xs text-red-500 font-bold';
+        }
+    } else if (currentLength >= maxLength * 0.8) {
+        counter.className = 'absolute right-3 top-1/2 transform -translate-y-1/2 text-xs text-orange-500 font-medium';
+        if (inputId === 'profile-bio') {
+            counter.className = 'absolute right-3 bottom-3 text-xs text-orange-500 font-medium';
+        }
+    } else {
+        counter.className = 'absolute right-3 top-1/2 transform -translate-y-1/2 text-xs text-gray-500 font-medium';
+        if (inputId === 'profile-bio') {
+            counter.className = 'absolute right-3 bottom-3 text-xs text-gray-500 font-medium';
+        }
     }
 }
 
@@ -5315,6 +5747,7 @@ window.searchUsers = searchUsers;
 window.clearSearchResults = clearSearchResults;
 window.sendFriendRequest = sendFriendRequest;
 window.removeFriend = removeFriend;
+window.toggleDebugRain = toggleDebugRain;
 window.addFriendToRound = addFriendToRound;
 window.showFriendDetails = showFriendDetails;
 window.loadFriends = loadFriends;
@@ -5330,6 +5763,8 @@ window.loadCurrentRound = loadCurrentRound;
 window.startRound = startRound;
 window.updateScore = updateScore;
 window.finishRound = finishRound;
+window.checkForIncompleteRounds = checkForIncompleteRounds;
+window.handleShowMoreLess = handleShowMoreLess;
 window.toggleScoreDisplayAndRefresh = toggleScoreDisplayAndRefresh;
 window.updateScorecardDisplay = updateScorecardDisplay;
 window.calculateDistance = calculateDistance;
@@ -5354,6 +5789,9 @@ window.showCanvasConfetti = showCanvasConfetti;
 window.showSectionWithLoadingProtection = showSectionWithLoadingProtection;
 window.showLoadingScreen = showLoadingScreen;
 window.hideLoadingScreen = hideLoadingScreen;
+window.debugRainSystem = debugRainSystem;
+window.updateCharacterCount = updateCharacterCount;
+window.refreshLocation = refreshLocation;
 
 window.addEventListener("DOMContentLoaded", async () => {
     // Check for password reset parameters in both search and hash
@@ -5457,5 +5895,13 @@ document.addEventListener('keydown', function(event) {
     if (event.key === 'g' || event.key === 'G') {
         console.log('🎉 Confetti triggered by G key!');
         showCanvasConfetti();
+    }
+});
+
+// Add this to your existing DOMContentLoaded event listener or create a new one
+document.addEventListener('keydown', function(event) {
+    if (event.key === 'r' || event.key === 'R') {
+        console.log('🌧️ Rain debug triggered by R key!');
+        toggleDebugRain();
     }
 });
