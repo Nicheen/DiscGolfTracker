@@ -118,6 +118,33 @@ function sortCourses(sortBy) {
     });
 }
 
+function testRainVisibility() {
+    console.log('Testing rain visibility...');
+    
+    // Force bright, visible rain drops for testing
+    const style = document.createElement('style');
+    style.id = 'rain-debug-style';
+    style.textContent = `
+        .rain-drop {
+            background: linear-gradient(to bottom, 
+                rgba(255, 0, 0, 0.9), 
+                rgba(255, 0, 0, 0.7)) !important;
+            width: 3px !important;
+            height: 20px !important;
+        }
+        
+        .rain-overlay {
+            background: rgba(255, 255, 0, 0.2) !important;
+        }
+    `;
+    document.head.appendChild(style);
+    
+    setTimeout(() => {
+        document.head.removeChild(style);
+        console.log('Rain debug styling removed');
+    }, 5000);
+}
+
 // Display courses with peek preview functionality
 function displayCourses() {
     const coursesContainer = document.getElementById('courses-container');
@@ -157,7 +184,9 @@ function displayCourses() {
         }
         
         courseCard.className = cardClasses;
-        
+        courseCard.style.position = 'relative';
+        courseCard.style.overflow = 'hidden';
+
         courseCard.innerHTML = `
             ${isPeekCard ? '<div class="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-white z-10 pointer-events-none"></div>' : ''}
             <div class="p-3 ${isPeekCard ? 'relative z-0' : ''} relative">
@@ -203,6 +232,11 @@ function displayCourses() {
                 </div>
             ` : ''}
         `;
+
+        // Add rain animation if it's raining
+        if (course.weather && course.weather.isRaining && !isPeekCard) {
+            createRainAnimation(courseCard);
+        }
         
         coursesContainer.appendChild(courseCard);
     });
@@ -218,6 +252,49 @@ function displayCourses() {
         };
         coursesContainer.appendChild(showLessButton);
     }
+}
+
+function toggleDebugRain() {
+    if (!coursesData || coursesData.length === 0) {
+        console.log('No courses available for rain debug');
+        return;
+    }
+    
+    const firstCourse = coursesData[0];
+    
+    // Toggle rain state
+    if (!firstCourse.weather) {
+        firstCourse.weather = {};
+    }
+    
+    firstCourse.weather.isRaining = !firstCourse.weather.isRaining;
+    firstCourse.weather.temperature = firstCourse.weather.temperature || 15;
+    firstCourse.weather.description = firstCourse.weather.isRaining ? 'moderate rain' : 'clear sky';
+    firstCourse.weather.main = firstCourse.weather.isRaining ? 'Rain' : 'Clear';
+    
+    console.log(`Rain debug: ${firstCourse.weather.isRaining ? 'ON' : 'OFF'} for ${firstCourse.name}`);
+    
+    // Refresh the display
+    displayCourses();
+}
+
+// Call this function directly in console or add a button
+function forceRainOnFirstCourse() {
+    if (!coursesData || coursesData.length === 0) {
+        console.log('No courses available');
+        return;
+    }
+    
+    const firstCourse = coursesData[0];
+    firstCourse.weather = {
+        isRaining: true,
+        temperature: 12,
+        description: 'moderate rain',
+        main: 'Rain'
+    };
+    
+    console.log(`Forced rain on: ${firstCourse.name}`);
+    displayCourses();
 }
 
 // Function to restore collapse state on page load
@@ -2072,6 +2149,188 @@ async function getWeatherDataFree(lat, lon) {
     }
 }
 
+async function getWeatherForCourse(course) {
+    if (!course.latitude || !course.longitude) {
+        return null;
+    }
+    
+    const cacheKey = `${course.latitude},${course.longitude}`;
+    const cached = weatherCache.get(cacheKey);
+    
+    // Check if we have valid cached data
+    if (cached && (Date.now() - cached.timestamp) < CACHE_DURATION) {
+        return cached.data;
+    }
+    
+    try {
+        const weatherData = await getWeatherDataFree(course.latitude, course.longitude);
+        
+        if (!weatherData) {
+            return null;
+        }
+        
+        const processedData = {
+            main: weatherData.main.toLowerCase(),
+            description: weatherData.description.toLowerCase(),
+            temperature: weatherData.temperature,
+            isRaining: isRainyWeather(weatherData.description.toLowerCase(), weatherData.main.toLowerCase())
+        };
+        
+        // Cache the result
+        weatherCache.set(cacheKey, {
+            data: processedData,
+            timestamp: Date.now()
+        });
+        
+        return processedData;
+    } catch (error) {
+        console.error('Error processing weather data for course:', error);
+        return null;
+    }
+}
+
+function isRainyWeather(description, main) {
+    const rainKeywords = [
+        'rain', 'drizzle', 'shower', 'precipitation',
+        'light rain', 'moderate rain', 'heavy rain',
+        'patchy rain', 'light drizzle', 'heavy drizzle',
+        'thunderstorm', 'storm'
+    ];
+    
+    const weatherText = `${description} ${main}`.toLowerCase();
+    
+    return rainKeywords.some(keyword => weatherText.includes(keyword));
+}
+
+function addRainAnimationStyles() {
+    if (document.getElementById('rain-animation-styles')) return;
+    
+    const styles = document.createElement('style');
+    styles.id = 'rain-animation-styles';
+    styles.textContent = `
+        .course-card {
+            position: relative !important;
+            overflow: hidden !important;
+        }
+        
+        .rain-container {
+            position: absolute !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100% !important;
+            height: 100% !important;
+            overflow: hidden !important;
+            pointer-events: none !important;
+            z-index: 5 !important;
+            border-radius: inherit;
+        }
+        
+        .rain-drop {
+            position: absolute !important;
+            background: linear-gradient(to bottom, 
+                rgba(59, 130, 246, 0.7), 
+                rgba(59, 130, 246, 0.4), 
+                rgba(59, 130, 246, 0.1)) !important;
+            width: 1.5px !important;
+            height: 15px !important;
+            border-radius: 0 0 50% 50% !important;
+            animation: rainDrop linear infinite !important;
+            transform-origin: center bottom !important;
+        }
+        
+        @keyframes rainDrop {
+            0% {
+                transform: translateY(-50px) translateX(-2px) !important;
+                opacity: 0 !important;
+            }
+            10% {
+                opacity: 0.8 !important;
+            }
+            90% {
+                opacity: 0.6 !important;
+            }
+            100% {
+                transform: translateY(200px) translateX(2px) !important;
+                opacity: 0 !important;
+            }
+        }
+        
+        .rain-overlay {
+            position: absolute !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100% !important;
+            height: 100% !important;
+            background: linear-gradient(135deg, 
+                rgba(59, 130, 246, 0.08) 0%, 
+                rgba(147, 197, 253, 0.05) 30%,
+                rgba(59, 130, 246, 0.08) 60%,
+                rgba(147, 197, 253, 0.03) 100%) !important;
+            pointer-events: none !important;
+            z-index: 4 !important;
+            border-radius: inherit;
+        }
+        
+        .weather-badge {
+            position: absolute !important;
+            top: 8px !important;
+            left: 8px !important;
+            background: rgba(59, 130, 246, 0.95) !important;
+            color: white !important;
+            padding: 3px 8px !important;
+            border-radius: 12px !important;
+            font-size: 10px !important;
+            font-weight: 600 !important;
+            z-index: 20 !important;
+            backdrop-filter: blur(4px) !important;
+            display: flex !important;
+            align-items: center !important;
+            gap: 3px !important;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
+        }
+        
+        .course-card.has-rain {
+            background: linear-gradient(135deg, 
+                rgba(219, 234, 254, 0.3) 0%, 
+                rgba(239, 246, 255, 0.2) 100%) !important;
+        }
+    `;
+    document.head.appendChild(styles);
+}
+
+function createRainAnimation(container) {
+    // Add rain class to container
+    container.classList.add('has-rain');
+    
+    const rainContainer = document.createElement('div');
+    rainContainer.className = 'rain-container';
+    
+    // Create more visible rain drops
+    for (let i = 0; i < 25; i++) {
+        const drop = document.createElement('div');
+        drop.className = 'rain-drop';
+        
+        // Randomize drop properties for better visibility
+        const leftPosition = Math.random() * 100;
+        const animationDelay = Math.random() * 3;
+        const animationDuration = 1 + Math.random() * 1; // Slower drops
+        
+        drop.style.left = `${leftPosition}%`;
+        drop.style.animationDelay = `${animationDelay}s`;
+        drop.style.animationDuration = `${animationDuration}s`;
+        
+        rainContainer.appendChild(drop);
+    }
+    
+    // Add rain overlay for atmosphere
+    const overlay = document.createElement('div');
+    overlay.className = 'rain-overlay';
+    rainContainer.appendChild(overlay);
+    
+    // Insert rain container as first child to ensure proper layering
+    container.insertBefore(rainContainer, container.firstChild);
+}
+
 // Add helper function for weather codes
 function getWeatherDescription(weathercode) {
     const codes = {
@@ -2099,6 +2358,40 @@ function getWeatherDescription(weathercode) {
     };
     
     return codes[weathercode] || 'Unknown';
+}
+
+async function loadCoursesWithWeather() {
+    // Initialize rain animation styles
+    addRainAnimationStyles();
+    
+    // Show loading state
+    const coursesContainer = document.getElementById('courses-container');
+    if (coursesContainer) {
+        coursesContainer.innerHTML = '<div class="text-center py-4 text-gray-500">Loading courses and weather...</div>';
+    }
+    
+    try {
+        // Load your existing courses data
+        await loadCourses(); // Your existing function
+        
+        // Fetch weather for courses with coordinates
+        const weatherPromises = coursesData.map(async (course, index) => {
+            if (course.latitude && course.longitude) {
+                const weather = await getWeatherForCourse(course);
+                coursesData[index].weather = weather;
+            }
+            return course;
+        });
+        
+        await Promise.all(weatherPromises);
+        
+        // Display courses with weather effects
+        displayCourses();
+        
+    } catch (error) {
+        console.error('Error loading courses with weather:', error);
+        displayCourses(); // Fallback to display without weather
+    }
 }
 
 // Clear search results
@@ -4312,16 +4605,6 @@ async function deleteOldProfilePicture(fileName) {
 function previewProfilePicture(event) {
     const file = event.target.files[0];
     if (file) {
-        // Validate file size (max 1MB for base64 storage)
-        if (file.size > 1 * 1024 * 1024) {
-            Swal.fire({
-                icon: "error",
-                title: "File Too Large",
-                text: "Profile picture must be less than 1MB",
-            });
-            return;
-        }
-
         // Validate file type
         if (!file.type.startsWith('image/')) {
             Swal.fire({
@@ -4332,51 +4615,174 @@ function previewProfilePicture(event) {
             return;
         }
 
-        const reader = new FileReader();
-        reader.onload = function(e) {
-            // Compress and resize the image
-            compressImage(e.target.result, (compressedBase64) => {
-                selectedProfilePicture = compressedBase64;
-                document.getElementById('profile-picture-preview').src = compressedBase64;
+        // Show loading
+        Swal.fire({
+            title: 'Processing Image...',
+            allowOutsideClick: false,
+            didOpen: () => {
+                Swal.showLoading();
+            }
+        });
+
+        // Compress image if over 1MB, otherwise use original
+        if (file.size > 1 * 1024 * 1024) {
+            compressImageFile(file, 1, (compressedBase64) => {
+                Swal.close();
+                initializeCroppie(compressedBase64);
             });
-        };
-        reader.readAsDataURL(file);
+        } else {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                Swal.close();
+                initializeCroppie(e.target.result);
+            };
+            reader.readAsDataURL(file);
+        }
     }
 }
 
-// Compress image to reduce size
-function compressImage(base64, callback) {
+let croppieInstance = null;
+
+function initializeCroppie(imageSrc) {
+    initializeCroppieModal();
+    
+    const container = document.getElementById('croppie-container');
+    
+    // Destroy existing instance if it exists
+    if (croppieInstance) {
+        croppieInstance.destroy();
+    }
+    
+    // Create new Croppie instance
+    croppieInstance = new Croppie(container, {
+        viewport: {
+            width: 200,
+            height: 200,
+            type: 'circle' // or 'square' based on your preference
+        },
+        boundary: {
+            width: 300,
+            height: 300
+        },
+        showZoomer: true,
+        enableResize: false,
+        enableOrientation: true,
+        mouseWheelZoom: 'ctrl'
+    });
+    
+    // Bind the image
+    croppieInstance.bind({
+        url: imageSrc
+    });
+    
+    // Show modal
+    document.getElementById('croppie-modal').style.display = 'block';
+}
+
+function initializeCroppieModal() {
+    // Create modal HTML if it doesn't exist
+    if (!document.getElementById('croppie-modal')) {
+        const modalHTML = `
+            <div id="croppie-modal" class="modal" style="display: none;">
+                <div class="modal-content" style="max-width: 500px;">
+                    <div class="modal-header">
+                        <h3>Crop Profile Picture</h3>
+                        <span class="close" onclick="closeCroppieModal()">&times;</span>
+                    </div>
+                    <div class="modal-body">
+                        <div id="croppie-container"></div>
+                        <div style="margin-top: 15px; text-align: center;">
+                            <button type="button" onclick="applyCrop()" class="btn btn-primary">Apply Crop</button>
+                            <button type="button" onclick="closeCroppieModal()" class="btn btn-secondary">Cancel</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
+    }
+}
+
+async function applyCrop() {
+    if (!croppieInstance) return;
+    
+    try {
+        const croppedBase64 = await croppieInstance.result({
+            type: 'base64',
+            size: 'viewport',
+            format: 'jpeg',
+            quality: 0.8,
+            circle: false // Set to true if you want circular crop with transparent background
+        });
+        
+        // Update the preview and selected picture
+        selectedProfilePicture = croppedBase64;
+        document.getElementById('profile-picture-preview').src = croppedBase64;
+        
+        closeCroppieModal();
+    } catch (error) {
+        console.error('Error applying crop:', error);
+        Swal.fire({
+            icon: "error",
+            title: "Crop Failed",
+            text: "Failed to apply crop. Please try again.",
+        });
+    }
+}
+
+function closeCroppieModal() {
+    const modal = document.getElementById('croppie-modal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+    
+    if (croppieInstance) {
+        croppieInstance.destroy();
+        croppieInstance = null;
+    }
+}
+
+function compressImageFile(file, maxSizeMB = 1, callback) {
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
     const img = new Image();
     
     img.onload = function() {
-        // Set canvas size (max 200x200)
-        const maxSize = 200;
+        // Calculate dimensions to maintain aspect ratio
         let { width, height } = img;
+        const maxDimension = 1024; // Max width or height
         
-        if (width > height) {
-            if (width > maxSize) {
-                height = (height * maxSize) / width;
-                width = maxSize;
-            }
-        } else {
-            if (height > maxSize) {
-                width = (width * maxSize) / height;
-                height = maxSize;
+        if (width > maxDimension || height > maxDimension) {
+            if (width > height) {
+                height = (height * maxDimension) / width;
+                width = maxDimension;
+            } else {
+                width = (width * maxDimension) / height;
+                height = maxDimension;
             }
         }
         
         canvas.width = width;
         canvas.height = height;
         
-        // Draw and compress
+        // Draw image
         ctx.drawImage(img, 0, 0, width, height);
-        const compressedBase64 = canvas.toDataURL('image/jpeg', 0.7);
+        
+        // Start with high quality and reduce if needed
+        let quality = 0.9;
+        let compressedBase64;
+        
+        do {
+            compressedBase64 = canvas.toDataURL('image/jpeg', quality);
+            quality -= 0.1;
+        } while (compressedBase64.length > maxSizeMB * 1024 * 1024 * 1.37 && quality > 0.1); // 1.37 factor for base64 overhead
+        
         callback(compressedBase64);
     };
     
-    img.src = base64;
+    const reader = new FileReader();
+    reader.onload = e => img.src = e.target.result;
+    reader.readAsDataURL(file);
 }
 
 // Update the loadProfile function
@@ -4893,7 +5299,7 @@ window.handlePasswordReset = handlePasswordReset;
 window.togglePasswordVisibility = togglePasswordVisibility;
 window.switchAuthMode = switchAuthMode;
 window.showForgotPassword = showForgotPassword;
-
+window.applyCrop = applyCrop;
 window.showSection = showSection;
 window.startRound = startRound;
 window.updateScore = updateScore;
@@ -4916,6 +5322,11 @@ window.toggleDateGroup = toggleDateGroup;
 window.toggleRoundItem = toggleRoundItem;
 window.loadRoundScorecard = loadRoundScorecard;
 window.toggleScoreDisplay = toggleScoreDisplay;
+window.forceRainOnFirstCourse = forceRainOnFirstCourse;
+window.loadCourses = loadCourses;
+window.loadProfile = loadProfile;
+window.saveProfile = saveProfile;
+window.loadCurrentRound = loadCurrentRound;
 window.startRound = startRound;
 window.updateScore = updateScore;
 window.finishRound = finishRound;
