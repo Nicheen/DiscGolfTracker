@@ -3605,34 +3605,32 @@ async function updateHoleDisplay(course, players, holeIndex) {
         const playerCard = document.createElement('div');
         playerCard.className = 'bg-white rounded-xl p-4 shadow-lg border-2 border-gray-100';
         playerCard.innerHTML = `
-        <div class="flex items-center justify-between gap-3">
-            <div class="flex items-center gap-3 min-w-0 flex-1">
-                <img src="${profilePicSrc}" alt="${player}" 
-                    class="w-10 h-10 rounded-full border-2 border-indigo-200 object-cover flex-shrink-0">
-                <div class="min-w-0 flex-1">
-                    <div class="font-bold text-gray-800 text-sm truncate" title="${player}">${player}</div>
-                    <div class="text-xs text-gray-600">${scoreText}</div>
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <img src="${profilePicSrc}" alt="${player}" 
+                        class="w-8 h-8 rounded-full border-2 border-indigo-200 object-cover">
+                    <div>
+                        <div class="font-bold text-gray-800">${player}</div>
+                        <div id="score-info-${player}-${holeIndex}" class="text-sm text-gray-600">${scoreText} (${currentScore || par})</div>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button onclick="updateScore('${player}', ${holeIndex}, -1)" 
+                            class="w-8 h-8 bg-red-500 hover:bg-red-600 text-white rounded-full text-lg font-bold transition-colors duration-200 flex items-center justify-center">
+                        −
+                    </button>
+                    <div class="w-8 h-8 flex items-center justify-center font-bold text-lg bg-gray-100 rounded-lg border-2 border-gray-300 cursor-pointer hover:bg-gray-200 transition-colors duration-200" 
+                        onclick="setScoreToPar('${player}', ${holeIndex})" 
+                        title="Click to set to par (${par})">
+                        <span id="score-${player}-${holeIndex}">${displayScore}</span>
+                    </div>
+                    <button onclick="updateScore('${player}', ${holeIndex}, 1)" 
+                            class="w-8 h-8 bg-green-500 hover:bg-green-600 text-white rounded-full text-lg font-bold transition-colors duration-200 flex items-center justify-center">
+                        +
+                    </button>
                 </div>
             </div>
-            <div class="flex items-center gap-2 flex-shrink-0">
-                <button onclick="updateScore('${player}', ${holeIndex}, -1)" 
-                        class="score-btn score-decrease">
-                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M20 12H4"></path>
-                    </svg>
-                </button>
-                <div class="score-display-new">
-                    <span id="score-${player}-${holeIndex}">${displayScore}</span>
-                </div>
-                <button onclick="updateScore('${player}', ${holeIndex}, 1)" 
-                        class="score-btn score-increase">
-                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M12 4v16m8-8H4"></path>
-                    </svg>
-                </button>
-            </div>
-        </div>
-    `;
+        `;
         return playerCard;
     };
 
@@ -3755,6 +3753,53 @@ async function addGuestPlayerToRound() {
             text: "Failed to add guest player.",
         });
     }
+}
+
+async function setScoreToPar(player, holeIndex) {
+    if (!currentRound) return;
+    
+    // Convert username to player ID for data storage
+    const playerId = currentRound.usernameToPlayerId[player];
+    if (!playerId || !currentRound.scores[playerId]) {
+        console.error('No current round or player scores not found:', player, playerId);
+        return;
+    }
+
+    // Find the course to get par information
+    const course = coursesData.find(c => c.id == currentRound.courseId);
+    if (!course) return;
+    
+    const par = course.holes[holeIndex];
+
+    // Ensure the scores array exists and has the right length
+    if (!Array.isArray(currentRound.scores[playerId])) {
+        currentRound.scores[playerId] = new Array(course.holes.length).fill(0);
+    }
+    
+    // Make sure the array is long enough
+    while (currentRound.scores[playerId].length < course.holes.length) {
+        currentRound.scores[playerId].push(0);
+    }
+
+    // Set score to par
+    currentRound.scores[playerId][holeIndex] = par;
+    
+    console.log(`Set ${player} (${playerId}) hole ${holeIndex + 1} to par (${par})`);
+
+    // Update display
+    const scoreElement = document.getElementById(`score-${player}-${holeIndex}`);
+    if (scoreElement) {
+        scoreElement.textContent = par;
+    }
+
+    // Update the player's score difference display
+    updatePlayerScoreDisplay(player, holeIndex, par, par);
+
+    // Update totals
+    updateTotals();
+
+    // Save to Supabase
+    await saveCurrentRoundScores();
 }
 
 async function deleteCurrentRound() {
@@ -3986,34 +4031,29 @@ async function updateScore(player, holeIndex, change) {
         scoreElement.textContent = newScore > 0 ? newScore : '-';
     }
 
-    // Update the player's score difference display
-    if (newScore > 0) {
-        const scoreDiff = newScore - par;
-        const scoreText = scoreDiff === 0 ? 'E' : scoreDiff > 0 ? `+${scoreDiff}` : scoreDiff.toString();
-        
-        const playerCard = scoreElement.closest('.bg-white');
-        if (playerCard) {
-            const scoreInfo = playerCard.querySelector('.text-sm.text-gray-600');
-            if (scoreInfo) {
-                scoreInfo.textContent = `${scoreText} (${newScore})`;
-            }
-        }
-    } else {
-        // If score is 0 (unplayed), show different display
-        const playerCard = scoreElement.closest('.bg-white');
-        if (playerCard) {
-            const scoreInfo = playerCard.querySelector('.text-sm.text-gray-600');
-            if (scoreInfo) {
-                scoreInfo.textContent = `Skipped`;
-            }
-        }
-    }
+    // Update the player's score difference display - FIX: Update in real-time
+    updatePlayerScoreDisplay(player, holeIndex, newScore, par);
 
     // Update totals
     updateTotals();
 
     // Save to Supabase
     await saveCurrentRoundScores();
+}
+
+function updatePlayerScoreDisplay(player, holeIndex, newScore, par) {
+    // Update the score info element with the specific ID
+    const scoreInfoElement = document.getElementById(`score-info-${player}-${holeIndex}`);
+    if (scoreInfoElement) {
+        if (newScore > 0) {
+            const scoreDiff = newScore - par;
+            const scoreText = scoreDiff === 0 ? 'E' : scoreDiff > 0 ? `+${scoreDiff}` : scoreDiff.toString();
+            scoreInfoElement.textContent = `${scoreText} (${newScore})`;
+        } else {
+            // If score is 0 (unplayed), show different display
+            scoreInfoElement.textContent = `Skipped`;
+        }
+    }
 }
 
 // Save current round scores to Supabase
@@ -4302,6 +4342,22 @@ async function finishRound() {
         const historySection = document.getElementById('history');
         if (historySection && historySection.classList.contains('active')) {
             loadHistory();
+        }
+
+        // After successfully saving the round, send notifications
+        if (otherRegisteredPlayerIds.length > 0) {
+            try {
+                await supabase.functions.invoke('send-push-notification', {
+                    body: { 
+                        roundId: currentRound.id,
+                        hostUserId: user.id 
+                    }
+                })
+                console.log('Push notifications sent successfully')
+            } catch (notificationError) {
+                console.warn('Failed to send push notifications:', notificationError)
+                // Don't fail the round completion if notifications fail
+            }
         }
         
     } catch (error) {
@@ -5462,6 +5518,14 @@ async function loginSuccessful() {
     
     // Set default section and nav state
     showSection('new-round');
+
+    // Request notification permission
+    setTimeout(async () => {
+        const permission = await requestNotificationPermission();
+        if (permission === 'granted') {
+            console.log('Push notifications enabled');
+        }
+    }, 2000); // Wait 2 seconds after login
     
     // Load all necessary data
     try {
@@ -6490,7 +6554,65 @@ function updateLocationStatus() {
     }
 }
 
+// Add to script.js - Push notification functions
+async function requestNotificationPermission() {
+    if ('Notification' in window && 'serviceWorker' in navigator) {
+        const permission = await Notification.requestPermission();
+        if (permission === 'granted') {
+            await registerForPushNotifications();
+        }
+        return permission;
+    }
+    return 'denied';
+}
+
+async function registerForPushNotifications() {
+    try {
+        const registration = await navigator.serviceWorker.register('/sw.js');
+        
+        // Subscribe to push notifications
+        const subscription = await registration.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: urlB64ToUint8Array('YOUR_VAPID_PUBLIC_KEY') // You'll need to generate this
+        });
+
+        // Save subscription to user profile
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+            await supabase
+                .from('profiles')
+                .update({
+                    push_subscription: subscription,
+                    updated_at: new Date()
+                })
+                .eq('id', user.id);
+        }
+    } catch (error) {
+        console.error('Error registering for push notifications:', error);
+    }
+}
+
+function urlB64ToUint8Array(base64String) {
+    const padding = '='.repeat((4 - base64String.length % 4) % 4);
+    const base64 = (base64String + padding)
+        .replace(/-/g, '+')
+        .replace(/_/g, '/');
+    
+    const rawData = window.atob(base64);
+    const outputArray = new Uint8Array(rawData.length);
+    
+    for (let i = 0; i < rawData.length; ++i) {
+        outputArray[i] = rawData.charCodeAt(i);
+    }
+    return outputArray;
+}
+
 // Add to window exports
+window.requestNotificationPermission = requestNotificationPermission;
+
+// Add to window exports
+window.updatePlayerScoreDisplay = updatePlayerScoreDisplay;
+window.setScoreToPar = setScoreToPar;
 window.handlePasswordReset = handlePasswordReset;
 window.showSettings = showSettings;
 window.showProfile = showProfile;
