@@ -3307,15 +3307,15 @@ function createRainAnimation(container) {
         rainDrops.length = 0;
         
         // Create initial rain drops spread across time
-        for (let i = 0; i < 25; i++) {
+        for (let i = 0; i < 30; i++) {
             rainDrops.push({
                 x: Math.random() * canvas.width,
                 y: Math.random() * canvas.height - canvas.height,
-                vx: (Math.random() - 0.5) * 1,
-                vy: 3 + Math.random() * 4,
-                width: 1.5 + Math.random() * 1,
-                height: 10 + Math.random() * 15,
-                opacity: 0.5 + Math.random() * 0.4
+                vx: (Math.random() - 0.5) * 0.5,
+                vy: 2 + Math.random() * 3,
+                width: 1 + Math.random() * 1,
+                height: 8 + Math.random() * 12,
+                opacity: 0.4 + Math.random() * 0.4
             });
         }
         
@@ -3359,29 +3359,23 @@ function createRainAnimation(container) {
             drop.x += drop.vx;
             drop.y += drop.vy;
             
-            // Draw rain drop with more visible styling
+            // Draw rain drop with gray color instead of blue
             ctx.save();
             ctx.globalAlpha = drop.opacity;
-            
-            // Use a more visible blue-gray color
-            ctx.fillStyle = `rgba(59, 130, 246, ${drop.opacity})`;
-            
-            // Draw simple rectangle (roundRect might not be available)
+            ctx.fillStyle = `rgba(107, 114, 128, ${drop.opacity * 0.6})`; // Gray rain drops
             ctx.fillRect(drop.x, drop.y, drop.width, drop.height);
-            
             ctx.restore();
             
             // Reset drop when it goes off screen
-            if (drop.y > canvas.height + 50) {
+            if (drop.y > canvas.height + 20) {
                 drop.x = Math.random() * canvas.width;
-                drop.y = -50 - Math.random() * 100;
-                drop.vx = (Math.random() - 0.5) * 1;
-                drop.vy = 3 + Math.random() * 4;
+                drop.y = -20;
+                drop.vx = (Math.random() - 0.5) * 0.5;
+                drop.vy = 2 + Math.random() * 3;
             }
             
-            if (drop.x < -20 || drop.x > canvas.width + 20) {
+            if (drop.x < -10 || drop.x > canvas.width + 10) {
                 drop.x = Math.random() * canvas.width;
-                drop.y = -50 - Math.random() * 100;
             }
         }
         
@@ -3395,7 +3389,7 @@ function createRainAnimation(container) {
     overlay.style.left = '0';
     overlay.style.width = '100%';
     overlay.style.height = '100%';
-    overlay.style.background = 'linear-gradient(135deg, rgba(107, 114, 128, 0.08) 0%, rgba(156, 163, 175, 0.04) 50%, rgba(107, 114, 128, 0.08) 100%)';
+    overlay.style.background = 'linear-gradient(135deg, rgba(107, 114, 128, 0.04) 0%, rgba(156, 163, 175, 0.02) 50%, rgba(107, 114, 128, 0.04) 100%)';
     overlay.style.pointerEvents = 'none';
     overlay.style.zIndex = '4';
     overlay.style.borderRadius = 'inherit';
@@ -3424,43 +3418,47 @@ function createRainAnimation(container) {
     container._rainResizeObserver = resizeObserver;
 }
 
+// Enhanced rain state preservation that checks course weather data
 function preserveRainState() {
     const rainStates = [];
     
-    // Get rain states from course cards with rain
-    const rainCards = document.querySelectorAll('.course-card.has-rain');
-    rainCards.forEach(card => {
-        const courseId = card.dataset.courseId;
-        if (courseId) {
-            const course = coursesData.find(c => c.id == courseId);
-            if (course) {
-                rainStates.push({
-                    courseId: courseId,
-                    courseName: course.name
-                });
-            }
+    // Check coursesData for rain information instead of DOM elements
+    coursesData.forEach(course => {
+        if (course.weather && course.weather.isRaining) {
+            rainStates.push({
+                courseId: course.id,
+                courseName: course.name,
+                hasRain: true
+            });
         }
     });
     
-    console.log('Preserving rain states:', rainStates);
+    console.log('Preserving rain states from course data:', rainStates);
     return rainStates;
 }
 
 function restoreRainStateToNewElements(rainStates) {
-    if (!rainStates || rainStates.length === 0) return;
+    if (!rainStates || rainStates.length === 0) {
+        console.log('No rain states to restore');
+        return;
+    }
     
     console.log('Restoring rain states to new elements:', rainStates);
     
-    // Find course cards by their data-course-id attribute
-    rainStates.forEach(state => {
-        const courseCard = document.querySelector(`[data-course-id="${state.courseId}"]`);
-        if (courseCard && !courseCard.classList.contains('has-rain')) {
-            console.log(`Restoring rain to course: ${state.courseName}`);
-            createRainAnimation(courseCard);
-        } else if (!courseCard) {
-            console.log(`Could not find course card for: ${state.courseName}`);
-        }
-    });
+    // Use a timeout to ensure DOM elements are fully rendered
+    setTimeout(() => {
+        rainStates.forEach(state => {
+            if (state.hasRain) {
+                const courseCard = document.querySelector(`[data-course-id="${state.courseId}"]`);
+                if (courseCard && !courseCard.classList.contains('has-rain')) {
+                    console.log(`Restoring rain to course: ${state.courseName}`);
+                    createRainAnimation(courseCard);
+                } else if (!courseCard) {
+                    console.log(`Could not find course card for: ${state.courseName}`);
+                }
+            }
+        });
+    }, 100); // Small delay to ensure DOM is ready
 }
 
 function handleShowMoreLess() {
