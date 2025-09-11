@@ -1199,3 +1199,21 @@ body.login-active {
         padding: 12px !important;
     }
 }
+
+/* Weather overlay styles */
+.weather-overlay {
+    transform: rotate(12deg);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+    backdrop-filter: blur(1px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.weather-overlay:hover {
+    transform: rotate(12deg) scale(1.05);
+    transition: transform 0.2s ease;
+}
+
+/* Ensure parent positioning for absolute weather overlay */
+.course-card .relative {
+    position: relative;
+}

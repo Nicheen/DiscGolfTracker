@@ -162,10 +162,10 @@ function getWeatherMain(weathercode) {
 }
 
 async function cleanupOldWeatherData() {
-    const cutoffDate = new Date(Date.now() - 24 * 60 * 60 * 1000); // 24 hours
+    const cutoffDate = new Date(Date.now() - 2 * 60 * 60 * 1000); // 2 hours instead of 24
     
     try {
-        await Promise.all([
+        const results = await Promise.allSettled([
             supabase
                 .from('weather_cache')
                 .delete()
@@ -176,9 +176,52 @@ async function cleanupOldWeatherData() {
                 .lt('updated_at', cutoffDate.toISOString())
         ]);
         
-        console.log('Cleaned up old weather data');
+        results.forEach((result, index) => {
+            const tableName = index === 0 ? 'weather_cache' : 'course_weather';
+            if (result.status === 'fulfilled') {
+                console.log(`Cleaned up old ${tableName} data`);
+            } else {
+                console.error(`Error cleaning up ${tableName}:`, result.reason);
+            }
+        });
+        
     } catch (error) {
         console.error('Error cleaning up weather data:', error);
+    }
+}
+
+async function deduplicateWeatherCache() {
+    try {
+        const { data: allWeather, error } = await supabase
+            .from('weather_cache')
+            .select('*')
+            .order('created_at', { ascending: true });
+        
+        if (error || !allWeather) return;
+        
+        const toDelete = [];
+        const seen = new Set();
+        
+        allWeather.forEach(weather => {
+            const key = `${weather.latitude.toFixed(4)}_${weather.longitude.toFixed(4)}`;
+            if (seen.has(key)) {
+                toDelete.push(weather.id);
+            } else {
+                seen.add(key);
+            }
+        });
+        
+        if (toDelete.length > 0) {
+            await supabase
+                .from('weather_cache')
+                .delete()
+                .in('id', toDelete);
+            
+            console.log(`Removed ${toDelete.length} duplicate weather cache entries`);
+        }
+        
+    } catch (error) {
+        console.error('Error deduplicating weather cache:', error);
     }
 }
 
@@ -542,9 +585,16 @@ function displayCourses() {
         courseCard.innerHTML = `
             ${isPeekCard ? '<div class="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-white z-10 pointer-events-none"></div>' : ''}
             <div class="p-3 ${isPeekCard ? 'relative z-0' : ''} relative">
-                <!-- Background emoji -->
+                <!-- Background emoji with weather overlay -->
                 <div class="absolute top-2 right-2 w-12 h-12 flex items-center justify-center text-4xl opacity-20 pointer-events-none z-0">
                     ${getCourseEmoji(course.name)}
+                    ${course.weather ? `
+                        <div class="absolute -top-1 -right-1 transform rotate-12 z-10">
+                            <span class="bg-gradient-to-r ${course.weather.isRaining ? 'from-blue-500 to-blue-600' : 'from-gray-600 to-gray-700'} text-white text-xs font-bold px-1.5 py-0.5 rounded-full shadow-lg opacity-90 whitespace-nowrap">
+                                ${course.weather.isRaining ? '🌧️' : getWeatherEmoji(course.weather.main, course.weather.temperature)} ${course.weather.temperature}°
+                            </span>
+                        </div>
+                    ` : ''}
                 </div>
                 
                 <!-- Content container with higher z-index -->
@@ -557,15 +607,6 @@ function displayCourses() {
                         ${course.distance !== null ? 
                             `<span class="distance-badge px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-700 flex-shrink-0">
                                 📍 ${formatDistance(course.distance)}
-                            </span>` : ''
-                        }
-                        ${course.weather && course.weather.isRaining ? 
-                            `<span class="weather-badge px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-600 text-white flex-shrink-0">
-                                🌧️ ${course.weather.temperature}°C
-                            </span>` : 
-                            course.weather ? 
-                            `<span class="weather-badge px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-700 flex-shrink-0">
-                                ${getWeatherEmoji(course.weather.main, course.weather.temperature)} ${course.weather.temperature}°C
                             </span>` : ''
                         }
                     </div>
@@ -2871,51 +2912,111 @@ async function loadWeather() {
     
     try {
         // Show loading state
-        if (weatherIcon) weatherIcon.textContent = '🔄';
+        if (weatherIcon) {
+            weatherIcon.textContent = '🔄';
+            weatherIcon.style.animation = 'spin 1s linear infinite';
+        }
         
-        // Get user location
-        const location = await getUserLocation();
+        // Get user location (with cache support)
+        const location = await getUserLocationWithCache();
         if (!location) {
             weatherWidget.classList.add('hidden');
             return;
         }
+
+        // Get current user for dynamic course ID
+        const { data: { user } } = await supabase.auth.getUser();
         
-        // Fetch weather data using free service
-        const weather = await getWeatherDataFree(location.latitude, location.longitude);
+        // In loadWeather(), change this line:
+        const userLocationCourse = {
+            id: `user_${user?.id || 'anonymous'}`, // Use dynamic ID instead of 'user_location'
+            name: 'Current Location',
+            coordinates: `${location.latitude},${location.longitude}`
+        };
+        
+        // Use the same weather system as courses (with caching and API fallback)
+        const weather = await getWeatherForCourse(userLocationCourse);
         if (!weather) {
             weatherWidget.classList.add('hidden');
             return;
         }
         
-        // Update UI
-        const emoji = getWeatherEmoji(weather.main, weather.temperature);
-        weatherIcon.textContent = emoji;
-        weatherTemp.textContent = `${weather.temperature}°C`;
-        weatherDesc.textContent = weather.description;
+        // Stop loading animation
+        if (weatherIcon) {
+            weatherIcon.style.animation = '';
+        }
         
-        // Add refresh timestamp to the widget
+        // Update UI with enhanced styling
+        const emoji = getWeatherEmoji(weather.main, weather.temperature);
+        
+        weatherIcon.textContent = emoji;
+        weatherTemp.textContent = `${weather.temperature}°`;
+        weatherDesc.textContent = weather.description.charAt(0).toUpperCase() + weather.description.slice(1);
+        
+        // Update widget styling based on weather
+        if (weather.isRaining) {
+            weatherWidget.className = 'flex items-center gap-2 bg-blue-100/80 backdrop-blur-sm px-3 py-2 rounded-lg border border-blue-200/50 shadow-sm cursor-pointer transition-all duration-200 hover:bg-blue-200/80';
+            weatherTemp.className = 'font-semibold text-blue-800';
+            weatherDesc.className = 'text-xs text-blue-700';
+        } else {
+            weatherWidget.className = 'flex items-center gap-2 bg-white/80 backdrop-blur-sm px-3 py-2 rounded-lg border border-gray-200/50 shadow-sm cursor-pointer transition-all duration-200 hover:bg-gray-100/80';
+            weatherTemp.className = 'font-semibold text-gray-800';
+            weatherDesc.className = 'text-xs text-gray-700';
+        }
+        
+        // Enhanced tooltip with weather details
         const now = new Date();
         const timeString = now.toLocaleTimeString('en-US', { 
             hour: '2-digit', 
             minute: '2-digit',
             hour12: false 
         });
-        weatherDesc.title = `Last updated: ${timeString}`;
+        const accuracy = location.accuracy ? ` (±${Math.round(location.accuracy)}m)` : '';
+        const cacheStatus = location.fromCache ? ' • Cached' : ' • Fresh';
         
-        // Show the widget
+        let tooltipDetails = `${weather.description.charAt(0).toUpperCase() + weather.description.slice(1)}`;
+        if (weather.humidity) tooltipDetails += `\nHumidity: ${weather.humidity}%`;
+        if (weather.windSpeed) tooltipDetails += `\nWind: ${Math.round(weather.windSpeed * 3.6)} km/h`;
+        tooltipDetails += `\nLast updated: ${timeString}${accuracy}${cacheStatus}\nClick to refresh`;
+        
+        weatherWidget.title = tooltipDetails;
+        
+        // Show the widget with fade-in effect
         weatherWidget.classList.remove('hidden');
-        weatherWidget.classList.add('flex');
+        weatherWidget.style.opacity = '0';
+        weatherWidget.style.transform = 'translateY(-10px)';
         
-        // Briefly show refresh indicator
+        setTimeout(() => {
+            weatherWidget.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+            weatherWidget.style.opacity = '1';
+            weatherWidget.style.transform = 'translateY(0)';
+        }, 50);
+        
+        // Brief success indication
         const originalIcon = weatherIcon.textContent;
-        weatherIcon.textContent = '✅';
+        weatherIcon.textContent = location.fromCache ? '💾' : '✨';
         setTimeout(() => {
             weatherIcon.textContent = originalIcon;
-        }, 1000);
+        }, 1200);
+        
+        console.log(`Weather loaded for user location: ${weather.temperature}°C, ${weather.description} (${location.fromCache ? 'cached' : 'fresh'})`);
         
     } catch (error) {
         console.error('Error loading weather:', error);
-        weatherWidget.classList.add('hidden');
+        
+        // Show error state briefly before hiding
+        if (weatherIcon) {
+            weatherIcon.style.animation = '';
+            weatherIcon.textContent = '⚠️';
+            weatherTemp.textContent = 'Error';
+            weatherDesc.textContent = 'Weather unavailable';
+            
+            setTimeout(() => {
+                weatherWidget.classList.add('hidden');
+            }, 2000);
+        } else {
+            weatherWidget.classList.add('hidden');
+        }
     }
 }
 
@@ -2982,7 +3083,6 @@ async function getWeatherDataFree(lat, lon) {
     }
 }
 
-// Enhanced weather fetching with database caching
 async function getWeatherForCourse(course) {
     if (!course.coordinates) {
         return null;
@@ -3008,7 +3108,7 @@ async function getWeatherForCourse(course) {
             return courseWeather[0].weather_data;
         }
         
-        // Check for nearby weather data
+        // Check for nearby weather data BEFORE making API calls
         const { data: nearbyWeather, error: nearbyError } = await supabase
             .from('weather_cache')
             .select('*')
@@ -3033,7 +3133,7 @@ async function getWeatherForCourse(course) {
                     isRaining: nearby.is_raining
                 };
                 
-                // Cache for this specific course
+                // Cache for this specific course but DON'T create new weather_cache entry
                 await supabase
                     .from('course_weather')
                     .upsert({
@@ -3046,11 +3146,10 @@ async function getWeatherForCourse(course) {
             }
         }
         
-        // Fetch fresh weather data
+        // Only fetch fresh weather if no nearby cache found
         console.log(`Fetching fresh weather for ${course.name}`);
         const apiWeatherData = await getWeatherWithFallback(lat, lon);
         
-        // In the getWeatherForCourse function, update the processedData creation:
         const processedData = {
             temperature: apiWeatherData.temperature,
             description: apiWeatherData.description.toLowerCase(),
@@ -3066,12 +3165,20 @@ async function getWeatherForCourse(course) {
             )
         };
 
-        debugWeatherData(course, processedData);
+        // Check AGAIN if someone else just created a nearby cache entry
+        const { data: recentNearby } = await supabase
+            .from('weather_cache')
+            .select('*')
+            .gte('updated_at', new Date(Date.now() - 60000).toISOString()) // Last 1 minute
+            .order('updated_at', { ascending: false });
         
-        // Save to both caches
-        await Promise.all([
-            // General location cache
-            supabase.from('weather_cache').insert({
+        const existingNearby = recentNearby?.find(w => 
+            isWithinRadius(lat, lon, w.latitude, w.longitude, 100) // Tighter radius for duplicates
+        );
+        
+        if (!existingNearby) {
+            // Only create new cache entry if none exists nearby
+            await supabase.from('weather_cache').insert({
                 latitude: lat,
                 longitude: lon,
                 temperature: processedData.temperature,
@@ -3082,14 +3189,15 @@ async function getWeatherForCourse(course) {
                 wind_speed: processedData.windSpeed,
                 visibility: processedData.visibility,
                 is_raining: processedData.isRaining
-            }),
-            // Course-specific cache
-            supabase.from('course_weather').upsert({
-                course_id: course.id,
-                weather_data: processedData,
-                updated_at: new Date()
-            })
-        ]);
+            });
+        }
+        
+        // Always cache for this specific course
+        await supabase.from('course_weather').upsert({
+            course_id: course.id,
+            weather_data: processedData,
+            updated_at: new Date()
+        });
         
         return processedData;
         
@@ -5862,6 +5970,7 @@ async function loginSuccessful() {
             loadWeather()
         ]);
         
+        await deduplicateWeatherCache();
         await loadCurrentRound();
         
         // Restore UI state
