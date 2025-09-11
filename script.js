@@ -2,12 +2,12 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 import './weather.js';
 
-const supabaseUrl = 'https://yklfurbhvgrsmnfupsey.supabase.co'
-const supabaseKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlrbGZ1cmJodmdyc21uZnVwc2V5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTY1NjIyMjcsImV4cCI6MjA3MjEzODIyN30.eEeA4Dtnk48oAULw78DWQ4mDplqiDcxv46fiIlTLDsE"
-const supabase = createClient(supabaseUrl, supabaseKey, {
+export const supabaseUrl = 'https://yklfurbhvgrsmnfupsey.supabase.co'
+export const supabaseKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlrbGZ1cmJodmdyc21uZnVwc2V5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTY1NjIyMjcsImV4cCI6MjA3MjEzODIyN30.eEeA4Dtnk48oAULw78DWQ4mDplqiDcxv46fiIlTLDsE"
+export const supabase = createClient(supabaseUrl, supabaseKey, {
   auth: {
-    persistSession: true,     // keeps session in localStorage
-    autoRefreshToken: true    // refreshes JWT automatically
+    persistSession: true,
+    autoRefreshToken: true
   }
 });
 
@@ -29,7 +29,8 @@ let showAllCourses = false;
 let sortDirection = 'asc'; // 'asc' or 'desc'
 let courseSortBy = 'distance';
 let selectedProfilePicture = null;
-let coursesData = [];
+export let coursesData = [];
+export { getUserLocationWithCache, displayCourses };
 let isNewRoundExpanded = true;
 let currentRound = null;
 let profilePictureCache = {};
@@ -422,6 +423,19 @@ function displayCourses() {
         
         coursesContainer.appendChild(courseCard);
     });
+
+    // In the displayCourses function, add this after creating each courseCard:
+    if (course.weather && course.weather.isRaining) {
+        console.log(`Course ${course.name} should have rain animation - isRaining: ${course.weather.isRaining}`);
+        
+        // Apply rain animation immediately if weather indicates rain
+        setTimeout(() => {
+            if (!courseCard.classList.contains('has-rain')) {
+                console.log(`Applying rain animation to ${course.name} during display`);
+                createRainAnimation(courseCard, course.weather);
+            }
+        }, 50);
+    }
     
     // Add a "Show Less" button when all courses are shown
     if (showAllCourses && coursesData.length > INITIAL_COURSE_DISPLAY_COUNT) {
@@ -533,6 +547,7 @@ async function signOut() {
             showConfirmButton: false
         });
         stopLocationUpdates();
+        stopWeatherAutoRefresh(); // ADD THIS LINE
         signOutSuccessful();
     }
 }
@@ -3647,22 +3662,6 @@ async function finishRound() {
         if (historySection && historySection.classList.contains('active')) {
             loadHistory();
         }
-
-        // After successfully saving the round, send notifications
-        if (otherRegisteredPlayerIds.length > 0) {
-            try {
-                await supabase.functions.invoke('send-push-notification', {
-                    body: { 
-                        roundId: currentRound.id,
-                        hostUserId: user.id 
-                    }
-                })
-                console.log('Push notifications sent successfully')
-            } catch (notificationError) {
-                console.warn('Failed to send push notifications:', notificationError)
-                // Don't fail the round completion if notifications fail
-            }
-        }
         
     } catch (error) {
         console.error('Error finishing round:', error);
@@ -4838,7 +4837,6 @@ async function deleteRound(roundId) {
     }
 }
 
-// Add this new function to your script.js file
 async function loginSuccessful() {
     // Add this to your loginSuccessful function or early in the app
     addRainAnimationStyles();
@@ -4861,14 +4859,6 @@ async function loginSuccessful() {
     
     // Set default section and nav state
     showSection('new-round');
-
-    // Request notification permission
-    setTimeout(async () => {
-        const permission = await requestNotificationPermission();
-        if (permission === 'granted') {
-            console.log('Push notifications enabled');
-        }
-    }, 2000); // Wait 2 seconds after login
     
     // Load all necessary data
     try {
@@ -4880,6 +4870,9 @@ async function loginSuccessful() {
         ]);
         
         await loadCurrentRound();
+        
+        // START WEATHER AUTO-REFRESH
+        startWeatherAutoRefresh();
         
         // Restore UI state
         setTimeout(() => {
@@ -5897,61 +5890,8 @@ function updateLocationStatus() {
     }
 }
 
-// Add to script.js - Push notification functions
-async function requestNotificationPermission() {
-    if ('Notification' in window && 'serviceWorker' in navigator) {
-        const permission = await Notification.requestPermission();
-        if (permission === 'granted') {
-            await registerForPushNotifications();
-        }
-        return permission;
-    }
-    return 'denied';
-}
-
-async function registerForPushNotifications() {
-    try {
-        const registration = await navigator.serviceWorker.register('/sw.js');
-        
-        // Subscribe to push notifications
-        const subscription = await registration.pushManager.subscribe({
-            userVisibleOnly: true,
-            applicationServerKey: urlB64ToUint8Array('YOUR_VAPID_PUBLIC_KEY') // You'll need to generate this
-        });
-
-        // Save subscription to user profile
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-            await supabase
-                .from('profiles')
-                .update({
-                    push_subscription: subscription,
-                    updated_at: new Date()
-                })
-                .eq('id', user.id);
-        }
-    } catch (error) {
-        console.error('Error registering for push notifications:', error);
-    }
-}
-
-function urlB64ToUint8Array(base64String) {
-    const padding = '='.repeat((4 - base64String.length % 4) % 4);
-    const base64 = (base64String + padding)
-        .replace(/-/g, '+')
-        .replace(/_/g, '/');
-    
-    const rawData = window.atob(base64);
-    const outputArray = new Uint8Array(rawData.length);
-    
-    for (let i = 0; i < rawData.length; ++i) {
-        outputArray[i] = rawData.charCodeAt(i);
-    }
-    return outputArray;
-}
 
 // Add to window exports
-window.requestNotificationPermission = requestNotificationPermission;
 window.updatePlayerScoreDisplay = updatePlayerScoreDisplay;
 window.setScoreToPar = setScoreToPar;
 window.handlePasswordReset = handlePasswordReset;
