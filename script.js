@@ -32,9 +32,190 @@ let profilePictureCache = {};
 let coursesCacheTime = null;
 let openDateGroup = 0; // Only latest date open by default
 let expandedRoundItems = new Set();
+const weatherCache = new Map();
 let showScoreDifference = true; // Default to showing score difference (total-par)
 let saveTimeout;
 let searchTimeout;
+
+// Weather configuration
+const WEATHER_CONFIG = {
+    API_KEY: 'a3e903daa8e24ef0c7b9d836686bd7fb', // Get from openweathermap.org
+    CACHE_DURATION: 30 * 60 * 1000, // 30 minutes
+    LOCATION_RADIUS: 500, // 500 meters
+    BACKUP_APIS: [
+        'openweathermap', // Primary
+        'weatherapi',     // Backup 1
+        'open-meteo'      // Backup 2 (free)
+    ]
+};
+
+// Update the fetchWeatherFromAPI function to handle missing keys
+async function fetchWeatherFromAPI(lat, lon, apiType = 'open-meteo') {
+    try {
+        let url, response, data;
+        
+        switch (apiType) {
+            case 'openweathermap':
+                if (!WEATHER_CONFIG.API_KEY) {
+                    throw new Error('OpenWeatherMap API key not configured');
+                }
+                url = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${WEATHER_CONFIG.API_KEY}&units=metric`;
+                response = await fetch(url);
+                if (!response.ok) throw new Error(`OpenWeatherMap API error: ${response.status}`);
+                data = await response.json();
+                return {
+                    temperature: Math.round(data.main.temp),
+                    description: data.weather[0].description,
+                    main: data.weather[0].main,
+                    humidity: data.main.humidity,
+                    pressure: data.main.pressure,
+                    windSpeed: data.wind?.speed || 0,
+                    visibility: data.visibility || null
+                };
+                
+            case 'weatherapi':
+                if (!WEATHER_CONFIG.WEATHER_API_KEY) {
+                    throw new Error('WeatherAPI key not configured');
+                }
+                url = `https://api.weatherapi.com/v1/current.json?key=${WEATHER_CONFIG.WEATHER_API_KEY}&q=${lat},${lon}`;
+                response = await fetch(url);
+                if (!response.ok) throw new Error(`WeatherAPI error: ${response.status}`);
+                data = await response.json();
+                return {
+                    temperature: Math.round(data.current.temp_c),
+                    description: data.current.condition.text.toLowerCase(),
+                    main: data.current.condition.text,
+                    humidity: data.current.humidity,
+                    pressure: data.current.pressure_mb,
+                    windSpeed: data.current.wind_kph / 3.6,
+                    visibility: data.current.vis_km * 1000
+                };
+                
+            case 'open-meteo':
+                url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&hourly=temperature_2m,relativehumidity_2m,precipitation,weathercode&timezone=auto`;
+                response = await fetch(url);
+                if (!response.ok) throw new Error(`Open-Meteo API error: ${response.status}`);
+                data = await response.json();
+                const current = data.current_weather;
+                
+                // Enhanced weather data extraction
+                const hourlyData = data.hourly;
+                const currentHour = new Date().getHours();
+                
+                return {
+                    temperature: Math.round(current.temperature),
+                    description: getWeatherDescription(current.weathercode),
+                    main: getWeatherMain(current.weathercode),
+                    humidity: hourlyData?.relativehumidity_2m?.[currentHour] || null,
+                    pressure: null,
+                    windSpeed: current.windspeed / 3.6,
+                    visibility: null,
+                    precipitation: hourlyData?.precipitation?.[currentHour] || 0
+                };
+                
+            default:
+                throw new Error(`Unknown API type: ${apiType}`);
+        }
+    } catch (error) {
+        console.error(`Error fetching weather from ${apiType}:`, error);
+        throw error;
+    }
+}
+
+async function getWeatherWithFallback(lat, lon) {
+    for (const apiType of WEATHER_CONFIG.BACKUP_APIS) {
+        try {
+            const weatherData = await fetchWeatherFromAPI(lat, lon, apiType);
+            console.log(`Successfully fetched weather from ${apiType}`);
+            return weatherData;
+        } catch (error) {
+            console.warn(`Failed to fetch from ${apiType}, trying next...`);
+            continue;
+        }
+    }
+    throw new Error('All weather APIs failed');
+}
+
+// Check if location is within radius of cached weather
+function isWithinRadius(lat1, lon1, lat2, lon2, radiusMeters = WEATHER_CONFIG.LOCATION_RADIUS) {
+    const R = 6371000; // Earth's radius in meters
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+              Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    const distance = R * c;
+    return distance <= radiusMeters;
+}
+
+// Enhanced weather descriptions for Open-Meteo codes
+function getWeatherMain(weathercode) {
+    if (weathercode >= 61 && weathercode <= 67) return 'Rain';
+    if (weathercode >= 71 && weathercode <= 77) return 'Snow';
+    if (weathercode >= 80 && weathercode <= 82) return 'Rain';
+    if (weathercode >= 95 && weathercode <= 99) return 'Thunderstorm';
+    if (weathercode >= 45 && weathercode <= 48) return 'Fog';
+    if (weathercode >= 51 && weathercode <= 57) return 'Drizzle';
+    if (weathercode <= 3) return 'Clear';
+    return 'Clouds';
+}
+
+async function cleanupOldWeatherData() {
+    const cutoffDate = new Date(Date.now() - 24 * 60 * 60 * 1000); // 24 hours
+    
+    try {
+        await Promise.all([
+            supabase
+                .from('weather_cache')
+                .delete()
+                .lt('updated_at', cutoffDate.toISOString()),
+            supabase
+                .from('course_weather')
+                .delete()
+                .lt('updated_at', cutoffDate.toISOString())
+        ]);
+        
+        console.log('Cleaned up old weather data');
+    } catch (error) {
+        console.error('Error cleaning up weather data:', error);
+    }
+}
+
+// Enhanced weather loading for all courses
+async function loadWeatherForAllCourses() {
+    addRainAnimationStyles();
+    
+    try {
+        // Clean up old data first
+        await cleanupOldWeatherData();
+        
+        // Process courses in batches to avoid rate limiting
+        const batchSize = 5;
+        for (let i = 0; i < coursesData.length; i += batchSize) {
+            const batch = coursesData.slice(i, i + batchSize);
+            
+            await Promise.all(batch.map(async (course, batchIndex) => {
+                const globalIndex = i + batchIndex;
+                if (course.coordinates) {
+                    const weather = await getWeatherForCourse(course);
+                    coursesData[globalIndex].weather = weather;
+                }
+            }));
+            
+            // Small delay between batches
+            if (i + batchSize < coursesData.length) {
+                await new Promise(resolve => setTimeout(resolve, 200));
+            }
+        }
+        
+        displayCourses();
+        
+    } catch (error) {
+        console.error('Error loading weather for courses:', error);
+        displayCourses(); // Fallback to display without weather
+    }
+}
 
 // Save user location to Supabase
 async function saveUserLocationToSupabase(latitude, longitude, accuracy = null) {
@@ -312,43 +493,6 @@ function sortCourses(sortBy) {
     });
 }
 
-function testRainVisibility() {
-    console.log('Testing rain visibility...');
-    
-    // Force bright, visible rain drops for testing
-    const style = document.createElement('style');
-    style.id = 'rain-debug-style';
-    style.textContent = `
-        .rain-drop {
-            background: linear-gradient(to bottom, 
-                rgba(255, 0, 0, 0.9), 
-                rgba(255, 0, 0, 0.7)) !important;
-            width: 3px !important;
-            height: 20px !important;
-        }
-        
-        .rain-overlay {
-            background: rgba(255, 255, 0, 0.2) !important;
-        }
-    `;
-    document.head.appendChild(style);
-    
-    setTimeout(() => {
-        document.head.removeChild(style);
-        console.log('Rain debug styling removed');
-    }, 5000);
-}
-
-function handleShowMoreLess() {
-    // This gets called before displayCourses() when show more/less is clicked
-    const rainStates = preserveRainState();
-    
-    // Store in a temporary global variable
-    window._tempRainStates = rainStates;
-}
-
-// Display courses with peek preview functionality
-// Replace the displayCourses function with this version that includes the fix:
 function displayCourses() {
     // Preserve rain state before clearing
     const rainStates = preserveRainState();
@@ -365,34 +509,25 @@ function displayCourses() {
         
         const courseCard = document.createElement('div');
         
-        // Determine if this is the peek card (4th card when not showing all)
+        // Determine if this is the peek card
         const isPeekCard = !showAllCourses && index === INITIAL_COURSE_DISPLAY_COUNT;
         const isHidden = !showAllCourses && index > INITIAL_COURSE_DISPLAY_COUNT;
         
         if (isHidden) {
-            return; // Don't render cards beyond the peek card
+            return;
         }
         
         // Base classes
         let cardClasses = 'course-card relative border-2 border-gray-200 rounded-lg cursor-pointer transition-all duration-300';
         
         if (isPeekCard) {
-            // Peek card styling
             cardClasses += ' peek-card opacity-40 hover:opacity-60 pointer-events-auto overflow-hidden';
             courseCard.onclick = () => {
                 handleShowMoreLess();
                 showAllCourses = true;
                 displayCourses();
-                // Restore rain after a delay
-                setTimeout(() => {
-                    if (window._tempRainStates) {
-                        restoreRainState(window._tempRainStates);
-                        delete window._tempRainStates;
-                    }
-                }, 100);
             };
         } else {
-            // Regular card styling
             cardClasses += ' p-3 hover:border-indigo-400 hover:shadow-md hover:-translate-y-0.5';
             courseCard.onclick = () => selectCourse(course.id, courseCard);
         }
@@ -401,7 +536,9 @@ function displayCourses() {
         courseCard.style.position = 'relative';
         courseCard.style.overflow = 'hidden';
 
-        // ... rest of the course card HTML creation ...
+        // Store course ID on the element for rain restoration
+        courseCard.dataset.courseId = course.id;
+
         courseCard.innerHTML = `
             ${isPeekCard ? '<div class="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-white z-10 pointer-events-none"></div>' : ''}
             <div class="p-3 ${isPeekCard ? 'relative z-0' : ''} relative">
@@ -420,6 +557,15 @@ function displayCourses() {
                         ${course.distance !== null ? 
                             `<span class="distance-badge px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-700 flex-shrink-0">
                                 📍 ${formatDistance(course.distance)}
+                            </span>` : ''
+                        }
+                        ${course.weather && course.weather.isRaining ? 
+                            `<span class="weather-badge px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-600 text-white flex-shrink-0">
+                                🌧️ ${course.weather.temperature}°C
+                            </span>` : 
+                            course.weather ? 
+                            `<span class="weather-badge px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-700 flex-shrink-0">
+                                ${getWeatherEmoji(course.weather.main, course.weather.temperature)} ${course.weather.temperature}°C
                             </span>` : ''
                         }
                     </div>
@@ -460,19 +606,14 @@ function displayCourses() {
             handleShowMoreLess();
             showAllCourses = false;
             displayCourses();
-            // Restore rain after a delay
-            setTimeout(() => {
-                if (window._tempRainStates) {
-                    restoreRainState(window._tempRainStates);
-                    delete window._tempRainStates;
-                }
-            }, 100);
         };
         coursesContainer.appendChild(showLessButton);
     }
-    
-    // Restore rain state after rendering
-    restoreRainState(rainStates);
+
+    // Apply rain animations to new DOM elements after they're in the DOM
+    setTimeout(() => {
+        restoreRainStateToNewElements(rainStates);
+    }, 50); // Small delay to ensure DOM is fully rendered
 }
 
 function toggleDebugRain() {
@@ -718,16 +859,11 @@ async function loadCourses() {
 
     // Sort courses by distance (closest first), then by name
     coursesData.sort((a, b) => {
-        // Courses with distance come first
         if (a.distance !== null && b.distance === null) return -1;
         if (a.distance === null && b.distance !== null) return 1;
-        
-        // Both have distance - sort by distance
         if (a.distance !== null && b.distance !== null) {
             return a.distance - b.distance;
         }
-        
-        // Neither has distance - sort by name
         return a.name.localeCompare(b.name);
     });
 
@@ -775,6 +911,9 @@ async function loadCourses() {
     
     // Sort courses
     sortCourses(courseSortBy);
+
+    // Load weather for all courses
+    await loadWeatherForAllCourses();
     
     // Display courses
     displayCourses();
@@ -2679,23 +2818,20 @@ function getWeatherEmoji(weatherMain, temperature) {
     const hour = now.getHours();
     const isDay = hour >= 6 && hour < 20; // 6 AM to 8 PM is considered day
     
+    // Check weather conditions first - prioritize precipitation over day/night
     switch (weatherMain?.toLowerCase()) {
-        case 'clear':
-        case 'sunny':
-            return isDay ? '☀️' : '🌙';
-        case 'partly cloudy':
-        case 'partly sunny':
-            return isDay ? '⛅' : '🌙';
-        case 'clouds':
-        case 'cloudy':
-        case 'overcast':
-            return isDay ? '☁️' : '☁️';
         case 'rain':
         case 'light rain':
+        case 'moderate rain':
         case 'heavy rain':
+        case 'shower':
+        case 'showers':
             return '🌧️';
         case 'drizzle':
         case 'light drizzle':
+        case 'mist':
+        case 'fog':
+        case 'foggy':
             return '🌦️';
         case 'thunderstorm':
         case 'storm':
@@ -2704,10 +2840,16 @@ function getWeatherEmoji(weatherMain, temperature) {
         case 'light snow':
         case 'heavy snow':
             return '❄️';
-        case 'mist':
-        case 'fog':
-        case 'foggy':
-            return '🌫️';
+        case 'clouds':
+        case 'cloudy':
+        case 'overcast':
+            return isDay ? '☁️' : '☁️';
+        case 'partly cloudy':
+        case 'partly sunny':
+            return isDay ? '⛅' : '🌙';
+        case 'clear':
+        case 'sunny':
+            return isDay ? '☀️' : '🌙';
         case 'haze':
         case 'hazy':
             return '🌫️';
@@ -2840,52 +2982,135 @@ async function getWeatherDataFree(lat, lon) {
     }
 }
 
+// Enhanced weather fetching with database caching
 async function getWeatherForCourse(course) {
-    if (!course.latitude || !course.longitude) {
+    if (!course.coordinates) {
         return null;
     }
     
-    const cacheKey = `${course.latitude},${course.longitude}`;
-    const cached = weatherCache.get(cacheKey);
-    
-    // Check if we have valid cached data
-    if (cached && (Date.now() - cached.timestamp) < CACHE_DURATION) {
-        return cached.data;
+    const [lat, lon] = course.coordinates.split(',').map(Number);
+    if (!lat || !lon) {
+        return null;
     }
     
     try {
-        const weatherData = await getWeatherDataFree(course.latitude, course.longitude);
+        // First check course-specific cache
+        const { data: courseWeather, error: courseError } = await supabase
+            .from('course_weather')
+            .select('*')
+            .eq('course_id', course.id)
+            .gte('updated_at', new Date(Date.now() - WEATHER_CONFIG.CACHE_DURATION).toISOString())
+            .order('updated_at', { ascending: false })
+            .limit(1);
         
-        if (!weatherData) {
-            return null;
+        if (!courseError && courseWeather && courseWeather.length > 0) {
+            console.log(`Using cached course weather for ${course.name}`);
+            return courseWeather[0].weather_data;
         }
         
-        const processedData = {
-            main: weatherData.main.toLowerCase(),
-            description: weatherData.description.toLowerCase(),
-            temperature: weatherData.temperature,
-            isRaining: isRainyWeather(weatherData.description.toLowerCase(), weatherData.main.toLowerCase())
-        };
+        // Check for nearby weather data
+        const { data: nearbyWeather, error: nearbyError } = await supabase
+            .from('weather_cache')
+            .select('*')
+            .gte('updated_at', new Date(Date.now() - WEATHER_CONFIG.CACHE_DURATION).toISOString())
+            .order('updated_at', { ascending: false });
         
-        // Cache the result
-        weatherCache.set(cacheKey, {
-            data: processedData,
-            timestamp: Date.now()
-        });
+        if (!nearbyError && nearbyWeather) {
+            const nearby = nearbyWeather.find(w => 
+                isWithinRadius(lat, lon, w.latitude, w.longitude)
+            );
+            
+            if (nearby) {
+                console.log(`Using nearby cached weather for ${course.name}`);
+                const weatherData = {
+                    temperature: nearby.temperature,
+                    description: nearby.description,
+                    main: nearby.weather_main,
+                    humidity: nearby.humidity,
+                    pressure: nearby.pressure,
+                    windSpeed: nearby.wind_speed,
+                    visibility: nearby.visibility,
+                    isRaining: nearby.is_raining
+                };
+                
+                // Cache for this specific course
+                await supabase
+                    .from('course_weather')
+                    .upsert({
+                        course_id: course.id,
+                        weather_data: weatherData,
+                        updated_at: new Date()
+                    });
+                
+                return weatherData;
+            }
+        }
+        
+        // Fetch fresh weather data
+        console.log(`Fetching fresh weather for ${course.name}`);
+        const apiWeatherData = await getWeatherWithFallback(lat, lon);
+        
+        // In the getWeatherForCourse function, update the processedData creation:
+        const processedData = {
+            temperature: apiWeatherData.temperature,
+            description: apiWeatherData.description.toLowerCase(),
+            main: apiWeatherData.main,
+            humidity: apiWeatherData.humidity,
+            pressure: apiWeatherData.pressure,
+            windSpeed: apiWeatherData.windSpeed,
+            visibility: apiWeatherData.visibility,
+            isRaining: isRainyWeather(
+                apiWeatherData.description.toLowerCase(), 
+                apiWeatherData.main.toLowerCase(),
+                apiWeatherData.precipitation || 0
+            )
+        };
+
+        debugWeatherData(course, processedData);
+        
+        // Save to both caches
+        await Promise.all([
+            // General location cache
+            supabase.from('weather_cache').insert({
+                latitude: lat,
+                longitude: lon,
+                temperature: processedData.temperature,
+                description: processedData.description,
+                weather_main: processedData.main,
+                humidity: processedData.humidity,
+                pressure: processedData.pressure,
+                wind_speed: processedData.windSpeed,
+                visibility: processedData.visibility,
+                is_raining: processedData.isRaining
+            }),
+            // Course-specific cache
+            supabase.from('course_weather').upsert({
+                course_id: course.id,
+                weather_data: processedData,
+                updated_at: new Date()
+            })
+        ]);
         
         return processedData;
+        
     } catch (error) {
-        console.error('Error processing weather data for course:', error);
+        console.error('Error getting weather for course:', error);
         return null;
     }
 }
 
-function isRainyWeather(description, main) {
+function isRainyWeather(description, main, precipitation = 0) {
+    // Check precipitation amount first (Open-Meteo provides this)
+    if (precipitation && precipitation > 0) {
+        return true;
+    }
+    
     const rainKeywords = [
         'rain', 'drizzle', 'shower', 'precipitation',
         'light rain', 'moderate rain', 'heavy rain',
         'patchy rain', 'light drizzle', 'heavy drizzle',
-        'thunderstorm', 'storm'
+        'thunderstorm', 'storm', 'rainy', 'wet',
+        'downpour', 'sprinkle', 'mizzle'
     ];
     
     const weatherText = `${description} ${main}`.toLowerCase();
@@ -2917,6 +3142,19 @@ function debugRainCanvas() {
             console.log(`Card ${index} has no canvas`);
         }
     });
+}
+
+// Add this debug function to help track rain detection
+function debugWeatherData(course, weatherData) {
+    if (weatherData) {
+        console.log(`Weather debug for ${course.name}:`, {
+            description: weatherData.description,
+            main: weatherData.main,
+            precipitation: weatherData.precipitation || 0,
+            isRaining: weatherData.isRaining,
+            temperature: weatherData.temperature
+        });
+    }
 }
 
 // Add to window exports
@@ -2962,10 +3200,20 @@ function addRainAnimationStyles() {
     document.head.appendChild(styles);
 }
 
-// Replace the existing stopRainAnimation function
-// Replace the existing stopRainAnimation function
 function stopRainAnimation(container) {
     container.classList.remove('has-rain');
+    
+    // Cancel animation frame
+    if (container._rainAnimationId) {
+        cancelAnimationFrame(container._rainAnimationId);
+        delete container._rainAnimationId;
+    }
+    
+    // Stop resize observer
+    if (container._rainResizeObserver) {
+        container._rainResizeObserver.disconnect();
+        delete container._rainResizeObserver;
+    }
     
     // Remove rain elements
     const canvas = container._rainCanvas;
@@ -2981,13 +3229,55 @@ function stopRainAnimation(container) {
     delete container._rainCanvas;
 }
 
+function testRainVisibility() {
+    console.log('Testing rain visibility...');
+    
+    const firstCard = document.querySelector('.course-card');
+    if (firstCard) {
+        console.log('Found first card, adding test rain');
+        createRainAnimation(firstCard);
+        
+        // Add a temporary red border to see the container
+        firstCard.style.border = '2px solid red';
+        setTimeout(() => {
+            firstCard.style.border = '';
+        }, 5000);
+    } else {
+        console.log('No course cards found');
+    }
+}
+
 // Add to window exports
 window.stopRainAnimation = stopRainAnimation;
+// Add this debug function and call it in displayCourses
+function debugCourseWeather() {
+    console.log('Course weather debug:');
+    coursesData.forEach(course => {
+        if (course.weather) {
+            console.log(`${course.name}: ${course.weather.description}, isRaining: ${course.weather.isRaining}`);
+        } else {
+            console.log(`${course.name}: No weather data`);
+        }
+    });
+}
 
-// Replace the createRainAnimation function (remove badge creation)
 function createRainAnimation(container) {
+    console.log('Creating rain animation for container:', container);
+    
+    // Ensure container is in DOM before proceeding
+    if (!document.contains(container)) {
+        console.log('Container not in DOM, delaying rain animation');
+        setTimeout(() => createRainAnimation(container), 100);
+        return;
+    }
+    
     // Add rain class to container
     container.classList.add('has-rain');
+    
+    // Ensure container has proper positioning
+    if (getComputedStyle(container).position === 'static') {
+        container.style.position = 'relative';
+    }
     
     // Create rain system with continuous looping
     const rainDrops = [];
@@ -3007,35 +3297,54 @@ function createRainAnimation(container) {
     
     // Set canvas size and initialize drops
     const initializeRain = () => {
-        canvas.width = container.offsetWidth || 200;
-        canvas.height = container.offsetHeight || 150;
+        const rect = container.getBoundingClientRect();
+        canvas.width = rect.width || 200;
+        canvas.height = rect.height || 150;
+        
+        console.log(`Canvas size: ${canvas.width}x${canvas.height}`);
         
         // Clear existing drops
         rainDrops.length = 0;
         
         // Create initial rain drops spread across time
-        for (let i = 0; i < 30; i++) {
+        for (let i = 0; i < 25; i++) {
             rainDrops.push({
                 x: Math.random() * canvas.width,
                 y: Math.random() * canvas.height - canvas.height,
-                vx: (Math.random() - 0.5) * 0.5,
-                vy: 2 + Math.random() * 3,
-                width: 1 + Math.random() * 1,
-                height: 8 + Math.random() * 12,
-                opacity: 0.4 + Math.random() * 0.4
+                vx: (Math.random() - 0.5) * 1,
+                vy: 3 + Math.random() * 4,
+                width: 1.5 + Math.random() * 1,
+                height: 10 + Math.random() * 15,
+                opacity: 0.5 + Math.random() * 0.4
             });
         }
+        
+        console.log(`Initialized ${rainDrops.length} rain drops`);
     };
     
     initializeRain();
     
+    let animationId;
+    let isAnimating = true;
+    
     // Animation function - continuous loop
     function updateRain() {
-        if (!container.classList.contains('has-rain')) {
+        // Check if animation should continue
+        if (!isAnimating || !container.classList.contains('has-rain')) {
+            console.log('Rain animation stopped - animation flag or rain class removed');
+            if (animationId) {
+                cancelAnimationFrame(animationId);
+            }
             return;
         }
         
+        // Double-check container is still in DOM
         if (!document.contains(container)) {
+            console.log('Rain animation stopped - container removed from DOM');
+            isAnimating = false;
+            if (animationId) {
+                cancelAnimationFrame(animationId);
+            }
             return;
         }
         
@@ -3050,64 +3359,86 @@ function createRainAnimation(container) {
             drop.x += drop.vx;
             drop.y += drop.vy;
             
-            // Draw rain drop with gray color instead of blue
+            // Draw rain drop with more visible styling
             ctx.save();
             ctx.globalAlpha = drop.opacity;
-            ctx.fillStyle = `rgba(107, 114, 128, ${drop.opacity * 0.6})`; // Gray rain drops
+            
+            // Use a more visible blue-gray color
+            ctx.fillStyle = `rgba(59, 130, 246, ${drop.opacity})`;
+            
+            // Draw simple rectangle (roundRect might not be available)
             ctx.fillRect(drop.x, drop.y, drop.width, drop.height);
+            
             ctx.restore();
             
             // Reset drop when it goes off screen
-            if (drop.y > canvas.height + 20) {
+            if (drop.y > canvas.height + 50) {
                 drop.x = Math.random() * canvas.width;
-                drop.y = -20;
-                drop.vx = (Math.random() - 0.5) * 0.5;
-                drop.vy = 2 + Math.random() * 3;
+                drop.y = -50 - Math.random() * 100;
+                drop.vx = (Math.random() - 0.5) * 1;
+                drop.vy = 3 + Math.random() * 4;
             }
             
-            if (drop.x < -10 || drop.x > canvas.width + 10) {
+            if (drop.x < -20 || drop.x > canvas.width + 20) {
                 drop.x = Math.random() * canvas.width;
+                drop.y = -50 - Math.random() * 100;
             }
         }
         
-        requestAnimationFrame(updateRain);
+        animationId = requestAnimationFrame(updateRain);
     }
     
-    // Add rain overlay with gray tones instead of blue
+    // Add rain overlay
     const overlay = document.createElement('div');
     overlay.style.position = 'absolute';
     overlay.style.top = '0';
     overlay.style.left = '0';
     overlay.style.width = '100%';
     overlay.style.height = '100%';
-    overlay.style.background = 'linear-gradient(135deg, rgba(107, 114, 128, 0.04) 0%, rgba(156, 163, 175, 0.02) 50%, rgba(107, 114, 128, 0.04) 100%)';
+    overlay.style.background = 'linear-gradient(135deg, rgba(107, 114, 128, 0.08) 0%, rgba(156, 163, 175, 0.04) 50%, rgba(107, 114, 128, 0.08) 100%)';
     overlay.style.pointerEvents = 'none';
     overlay.style.zIndex = '4';
     overlay.style.borderRadius = 'inherit';
     
-    // Insert elements into container (no badge)
+    // Insert elements into container
     container.insertBefore(overlay, container.firstChild);
     container.insertBefore(canvas, container.firstChild);
     
     // Start animation
+    console.log('Starting rain animation');
     updateRain();
     
-    // Store canvas reference for cleanup
+    // Store references for cleanup
     container._rainCanvas = canvas;
+    container._rainAnimationId = animationId;
+    container._rainIsAnimating = () => isAnimating;
+    container._rainStopAnimation = () => { isAnimating = false; };
+    
+    // Handle resize events
+    const resizeObserver = new ResizeObserver(() => {
+        if (isAnimating && document.contains(container)) {
+            initializeRain();
+        }
+    });
+    resizeObserver.observe(container);
+    container._rainResizeObserver = resizeObserver;
 }
 
-// Replace the existing preserveRainState function
 function preserveRainState() {
     const rainStates = [];
     
-    // Get rain states from the coursesData directly instead of DOM
-    coursesData.forEach((course, index) => {
-        if (course.weather && course.weather.isRaining) {
-            rainStates.push({
-                courseId: course.id,
-                courseName: course.name,
-                index: index
-            });
+    // Get rain states from course cards with rain
+    const rainCards = document.querySelectorAll('.course-card.has-rain');
+    rainCards.forEach(card => {
+        const courseId = card.dataset.courseId;
+        if (courseId) {
+            const course = coursesData.find(c => c.id == courseId);
+            if (course) {
+                rainStates.push({
+                    courseId: courseId,
+                    courseName: course.name
+                });
+            }
         }
     });
     
@@ -3115,30 +3446,26 @@ function preserveRainState() {
     return rainStates;
 }
 
-// Replace the existing restoreRainState function
-function restoreRainState(rainStates) {
-    if (rainStates.length === 0) return;
+function restoreRainStateToNewElements(rainStates) {
+    if (!rainStates || rainStates.length === 0) return;
     
-    console.log('Restoring rain states:', rainStates);
+    console.log('Restoring rain states to new elements:', rainStates);
     
-    // Wait a bit for DOM to be ready
-    setTimeout(() => {
-        // Apply rain to matching course cards
-        const courseCards = document.querySelectorAll('.course-card');
-        
-        courseCards.forEach((card, cardIndex) => {
-            // Find if this card should have rain based on preserved state
-            const shouldHaveRain = rainStates.some(state => {
-                // Match by course index in the current display
-                return state.index === cardIndex;
-            });
-            
-            if (shouldHaveRain && !card.classList.contains('has-rain')) {
-                console.log(`Restoring rain to card ${cardIndex}`);
-                createRainAnimation(card);
-            }
-        });
-    }, 50);
+    // Find course cards by their data-course-id attribute
+    rainStates.forEach(state => {
+        const courseCard = document.querySelector(`[data-course-id="${state.courseId}"]`);
+        if (courseCard && !courseCard.classList.contains('has-rain')) {
+            console.log(`Restoring rain to course: ${state.courseName}`);
+            createRainAnimation(courseCard);
+        } else if (!courseCard) {
+            console.log(`Could not find course card for: ${state.courseName}`);
+        }
+    });
+}
+
+function handleShowMoreLess() {
+    // Store rain states temporarily
+    window._tempRainStates = preserveRainState();
 }
 
 // Add this test function
@@ -5498,6 +5825,7 @@ async function deleteRound(roundId) {
 
 // Add this new function to your script.js file
 async function loginSuccessful() {
+    // Add this to your loginSuccessful function or early in the app
     addRainAnimationStyles();
     document.getElementById('login-screen').style.display = 'none';
     document.getElementById('main-app').style.display = 'block';
@@ -6002,15 +6330,15 @@ function togglePasswordVisibility() {
         passwordInput.type = 'text';
         // Hidden eye icon (eye with slash)
         toggleIcon.innerHTML = `
-            <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
-            <line x1="1" y1="1" x2="23" y2="23"></line>
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+            <circle cx="12" cy="12" r="3"></circle>
         `;
     } else {
         passwordInput.type = 'password';
         // Visible eye icon
         toggleIcon.innerHTML = `
-            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+            <line x1="1" y1="1" x2="23" y2="23"></line>
         `;
     }
 }
@@ -6621,7 +6949,8 @@ window.toggleScoreDisplayGlobal = toggleScoreDisplayGlobal;
 window.refreshLocationManually = refreshLocationManually;
 window.clearCacheData = clearCacheData;
 window.updateLocationStatus = updateLocationStatus;
-// Add these to your window exports at the bottom of script.js
+window.preserveRainState = preserveRainState;
+window.handleShowMoreLess = handleShowMoreLess;
 window.togglePasswordVisibility = togglePasswordVisibility;
 window.switchAuthMode = switchAuthMode;
 window.showForgotPassword = showForgotPassword;
@@ -6665,7 +6994,6 @@ window.startRound = startRound;
 window.updateScore = updateScore;
 window.finishRound = finishRound;
 window.checkForIncompleteRounds = checkForIncompleteRounds;
-window.handleShowMoreLess = handleShowMoreLess;
 window.toggleScoreDisplayAndRefresh = toggleScoreDisplayAndRefresh;
 window.updateScorecardDisplay = updateScorecardDisplay;
 window.calculateDistance = calculateDistance;
@@ -6696,6 +7024,9 @@ window.refreshLocation = refreshLocation;
 window.saveUserLocationToSupabase = saveUserLocationToSupabase;
 window.getUserLocationFromSupabase = getUserLocationFromSupabase;
 window.getUserLocationWithCache = getUserLocationWithCache;
+window.getWeatherForCourse = getWeatherForCourse;
+window.loadWeatherForAllCourses = loadWeatherForAllCourses;
+window.cleanupOldWeatherData = cleanupOldWeatherData;
 
 window.addEventListener("DOMContentLoaded", async () => {
     // Check for password reset parameters in both search and hash
@@ -6794,18 +7125,29 @@ window.addEventListener("scroll", () => {
     header.style.opacity = currentHeaderOpacity / 0.95; // Normalize to 0-1 range
 });
 
-// Add confetti testing with G key (for testing purposes)
+let adminMode = false;
+
+// Enter Admin Mode
 document.addEventListener('keydown', function(event) {
-    if (event.key === 'g' || event.key === 'G') {
-        console.log('🎉 Confetti triggered by G key!');
+    if (event.ctrlKey && event.shiftKey && (event.key === 'l' || event.key === 'L')) {
+        adminMode = !adminMode;
+        console.log(`🔑 Admin Mode: ${adminMode}`);
+    }
+});
+
+// Confetti with Ctrl + G
+document.addEventListener('keydown', function(event) {
+    if (adminMode && (event.key === 'g' || event.key === 'G')) {
+        console.log('🎉 Confetti triggered by Ctrl+G!');
         showCanvasConfetti();
     }
 });
 
-// Add this to your existing DOMContentLoaded event listener or create a new one
+// Rain debug with Ctrl + R
 document.addEventListener('keydown', function(event) {
-    if (event.key === 'r' || event.key === 'R') {
-        console.log('🌧️ Rain debug triggered by R key!');
+    if (adminMode && (event.key === 'r' || event.key === 'R')) {
+        console.log('🌧️ Rain debug triggered by Ctrl+R!');
         toggleDebugRain();
     }
 });
+
