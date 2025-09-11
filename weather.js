@@ -130,29 +130,28 @@ function getWeatherMain(weathercode) {
 }
 
 async function cleanupOldWeatherData() {
-    const cutoffDate = new Date(Date.now() - 2 * 60 * 60 * 1000); // 2 hours instead of 24
+    const cutoffDate = new Date(Date.now() - 2 * 60 * 60 * 1000); // 2 hours
     
     try {
-        const results = await Promise.allSettled([
-            supabase
-                .from('weather_cache')
-                .delete()
-                .lt('updated_at', cutoffDate.toISOString()),
-            supabase
-                .from('course_weather')
-                .delete()
-                .lt('updated_at', cutoffDate.toISOString())
-        ]);
+        const { error } = await supabase
+            .from('courses')
+            .update({
+                last_weather_update: null,
+                temperature: null,
+                description: null,
+                humidity: null,
+                wind_speed: null,
+                wind_direction: null,
+                visibility: null,
+                is_raining: null
+            })
+            .lt('last_weather_update', cutoffDate.toISOString());
         
-        results.forEach((result, index) => {
-            const tableName = index === 0 ? 'weather_cache' : 'course_weather';
-            if (result.status === 'fulfilled') {
-                console.log(`Cleaned up old ${tableName} data`);
-            } else {
-                console.error(`Error cleaning up ${tableName}:`, result.reason);
-            }
-        });
-        
+        if (error) {
+            console.error('Error cleaning up old weather data:', error);
+        } else {
+            console.log('Cleaned up old weather data from courses table');
+        }
     } catch (error) {
         console.error('Error cleaning up weather data:', error);
     }
@@ -371,9 +370,8 @@ async function loadWeather() {
         // Get current user for dynamic course ID
         const { data: { user } } = await supabase.auth.getUser();
         
-        // In loadWeather(), change this line:
         const userLocationCourse = {
-            id: 'user_location', // Use fixed string instead of dynamic user ID
+            id: 'user_location',
             name: 'Current Location',
             coordinates: `${location.latitude},${location.longitude}`
         };
@@ -574,11 +572,19 @@ async function getWeatherForCourse(course) {
         }
         
         // Always cache for this specific course
-        await supabase.from('course_weather').upsert({
-            course_id: course.id,
-            weather_data: processedData,
-            updated_at: new Date()
-        });
+        await supabase
+            .from('courses')
+            .update({
+                last_weather_update: new Date().toISOString(),
+                temperature: processedData.temperature,
+                description: processedData.description,
+                humidity: processedData.humidity,
+                wind_speed: processedData.windSpeed,
+                wind_direction: processedData.windDirection,
+                visibility: processedData.visibility,
+                is_raining: processedData.isRaining
+            })
+            .eq('id', course.id);
         
         return processedData;
         
@@ -992,7 +998,75 @@ function getWeatherDescription(weathercode) {
     return codes[weathercode] || 'Unknown';
 }
 
+async function loadWeatherFromDatabase() {
+    try {
+        const { data: coursesWithWeather, error } = await supabase
+            .from("courses")
+            .select("id, last_weather_update, temperature, description, humidity, wind_speed, wind_direction, visibility, is_raining");
+        
+        if (error) {
+            console.error("Error loading weather from database:", error);
+            return;
+        }
 
-window.testRainAnimation = testRainAnimation;
-window.debugRainCanvas = debugRainCanvas;
+        coursesWithWeather.forEach(courseWeather => {
+            const course = coursesData.find(c => c.id === courseWeather.id);
+            if (course && courseWeather.last_weather_update) {
+                // Check if weather data is recent (less than 30 minutes old)
+                const weatherAge = Date.now() - new Date(courseWeather.last_weather_update).getTime();
+                if (weatherAge < 30 * 60 * 1000) { // 30 minutes
+                    course.weather = {
+                        temperature: courseWeather.temperature,
+                        description: courseWeather.description,
+                        main: courseWeather.description, // Use description as main for consistency
+                        humidity: courseWeather.humidity,
+                        windSpeed: courseWeather.wind_speed,
+                        windDirection: courseWeather.wind_direction,
+                        visibility: courseWeather.visibility,
+                        isRaining: courseWeather.is_raining
+                    };
+                }
+            }
+        });
+        
+        console.log(`Loaded weather from database for ${coursesWithWeather.filter(c => c.last_weather_update).length} courses`);
+    } catch (error) {
+        console.error('Error loading weather from database:', error);
+    }
+}
+
+
+// Weather system exports
+window.loadWeather = loadWeather;
+window.loadWeatherForAllCourses = loadWeatherForAllCourses;
+window.loadWeatherFromDatabase = loadWeatherFromDatabase;
+window.getWeatherForCourse = getWeatherForCourse;
+window.getWeatherWithFallback = getWeatherWithFallback;
+window.fetchWeatherFromAPI = fetchWeatherFromAPI;
+
+// Weather utility functions
+window.getWeatherEmoji = getWeatherEmoji;
+window.getWeatherMain = getWeatherMain;
+window.getWeatherDescription = getWeatherDescription;
+window.isRainyWeather = isRainyWeather;
+window.isWithinRadius = isWithinRadius;
+window.extractWindDataFromAPI = extractWindDataFromAPI;
+
+// Rain animation functions
+window.createRainAnimation = createRainAnimation;
 window.stopRainAnimation = stopRainAnimation;
+window.addRainAnimationStyles = addRainAnimationStyles;
+window.preserveRainState = preserveRainState;
+window.restoreRainStateToNewElements = restoreRainStateToNewElements;
+window.handleShowMoreLess = handleShowMoreLess;
+
+// Debug functions
+window.toggleDebugRain = toggleDebugRain;
+window.debugRainSystem = debugRainSystem;
+window.debugRainCanvas = debugRainCanvas;
+window.debugWeatherData = debugWeatherData;
+window.forceRainOnFirstCourse = forceRainOnFirstCourse;
+window.testRainAnimation = testRainAnimation;
+
+// Cleanup function
+window.cleanupOldWeatherData = cleanupOldWeatherData;
