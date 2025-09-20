@@ -406,23 +406,13 @@ function getWeatherEmoji(weatherMain, temperature) {
 }
 
 async function loadWeather() {
-    const weatherWidget = document.getElementById('weather-widget');
-    const weatherIcon = document.getElementById('weather-icon');
-    const weatherTemp = document.getElementById('weather-temp');
-    //const weatherDesc = document.getElementById('weather-desc');
-    
-    if (!weatherWidget) return;
+    const weatherWidget = document.getElementsByClassName('weather-widget');
+    const weatherIcon = document.getElementsByClassName('weather-icon');
+    const weatherTemp = document.getElementsByClassName('weather-temperature');
     
     try {
-        // Show loading state
-        if (weatherIcon) {
-            weatherIcon.textContent = '🔄';
-            weatherIcon.style.animation = 'spin 1s linear infinite';
-        }
-        
-        // ALWAYS get fresh location and weather for widget
         console.log('Fetching fresh weather for widget...');
-        const location = await getUserLocation(); // Remove cache for widget
+        const location = await getUserLocation();
         if (!location) {
             weatherWidget.classList.add('hidden');
             return;
@@ -452,28 +442,8 @@ async function loadWeather() {
             )
         };
         
-        // Stop loading animation
-        if (weatherIcon) {
-            weatherIcon.style.animation = '';
-        }
-        
-        // Update UI with fresh data
-        const emoji = getWeatherEmoji(weather.main, weather.temperature);
-        
-        weatherIcon.textContent = emoji;
-        weatherTemp.textContent = `${weather.temperature}°`;
-        //weatherDesc.textContent = weather.description.charAt(0).toUpperCase() + weather.description.slice(1);
-        
-        // Update widget styling based on weather
-        if (weather.isRaining) {
-            weatherWidget.className = 'flex items-center gap-2 bg-blue-100/80 backdrop-blur-sm px-3 py-2 rounded-lg border border-blue-200/50 shadow-sm cursor-pointer transition-all duration-200 hover:bg-blue-200/80';
-            weatherTemp.className = 'font-semibold text-blue-800';
-            //weatherDesc.className = 'text-xs text-blue-700';
-        } else {
-            weatherWidget.className = 'flex items-center gap-2 bg-white/80 backdrop-blur-sm px-3 py-2 rounded-lg border border-gray-200/50 shadow-sm cursor-pointer transition-all duration-200 hover:bg-gray-100/80';
-            weatherTemp.className = 'font-semibold text-gray-800';
-            //weatherDesc.className = 'text-xs text-gray-700';
-        }
+        weatherIcon.textContent = 'sun';
+        weatherTemp.textContent = `${weather.temperature}°C`;
         
         // Enhanced tooltip with weather details
         const now = new Date();

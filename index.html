@@ -5,10 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Disc Golf Tracker</title>
     <link rel="stylesheet" href="style.css">
-    <link rel="stylesheet" href="mobile_style.css">
+    <link rel="stylesheet" href="bottom-navigation-style.css">
+    <link rel="stylesheet" href="login-page-style.css">
+    <link rel="stylesheet" href="page-profile-style.css">
+    <link rel="stylesheet" href="main-header-style.css">
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#4f46e5">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/croppie/2.6.5/croppie.min.css">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,0,0" />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/croppie/2.6.5/croppie.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script type="module" src="script.js"></script>
@@ -17,52 +21,35 @@
 </head>
 <body>
     <!-- Login Screen -->
-    <div id="login-screen" class="login-container bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500" style="display: block;">
-        <div class="login-card">
-            <div class="login-header">
-                <h1>🥏 Disc Golf Tracker</h1>
+    <div class="login-screen">
+        <!-- SIGN UP / LOGIN FORM -->
+        <div class="login-container">
+            <h2 class="form-title">Login with</h2>
+            <div class="social-login">
+                <button class="social-button" onclick="signInWithGoogle()">
+                    <img src="./images/google.svg" alt="Google" class="social-icon"/>
+                    Google
+                </button>
             </div>
-            
-            <div class="login-content">
-                <h2 id="auth-title">Welcome Back!</h2>
-                <p id="auth-subtitle">Sign in to access your disc golf data and connect with friends.</p>
+
+            <p class="seperator"><span>or</span></p>
+
+            <form action="#" class="login-form">
+                <div class="input-wrapper">
+                    <input type="email" placeholder="Email address" class="input-field" required/>
+                    <span class="material-symbols-rounded">mail</span>
+                </div>
+                <div class="input-wrapper">
+                    <input type="password" placeholder="Password" class="input-field" required/>
+                    <span class="material-symbols-rounded">lock</span>
+                    <span class="material-symbols-rounded eye-icon">visibility_off</span>
+                </div>
                 
-                <!-- SIGN UP / LOGIN FORM -->
-                <form id="auth-form">
-                    <div class="form-group">
-                        <input type="email" id="login-email" placeholder="Email" required 
-                            class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" />
-                    </div>
-                    
-                    <div class="form-group">
-                        <div class="relative">
-                            <input type="password" id="login-password" placeholder="Password" required 
-                                class="w-full pr-12 px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" />
-                            <button type="button" onclick="togglePasswordVisibility()" 
-                                    class="absolute pb-5 top-1/2 right-2 transform -translate-y-1/2 flex items-center justify-center w-8 h-8 text-gray-400 hover:text-indigo-600 transition-colors duration-200 rounded">
-                                <svg id="password-toggle-icon" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
-                                    <line x1="1" y1="1" x2="23" y2="23"></line>
-                                </svg>
-                            </button>
-                        </div>
-                    </div>
-                    
-                    <div class="auth-mode-container">
-                        <button class="btn btn-primary" type="button" id="auth-submit-btn" onclick="signIn()">
-                            <span id="auth-btn-text">Sign In</span>
-                        </button>
-                        
-                        <div id="forgot-password-link" class="forgot-password-link">
-                            <button type="button" class="link-btn" onclick="showForgotPassword()">Forgot your password?</button>
-                        </div>
-                        
-                        <div id="auth-switch-text" class="auth-switch-text">
-                            Don't have an account? <button type="button" class="link-btn" onclick="switchAuthMode('signup')">Sign up here</button>
-                        </div>
-                    </div>
-                </form>
-            </div>
+                <a href="#" class="forgot-pass-link">Forgot Password?</a>
+                <button class="login-button" onclick="signIn()">Login</button>
+                <p class="signup-text">Don't have an account? <a href="#">Signup now</a></p>
+
+            </form>
         </div>
     </div>
 
@@ -81,23 +68,16 @@
     </div>
 
     <!-- Main App (hidden until logged in) -->
-    <div id="main-app" class="min-h-screen bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 p-2 md:p-4 pb-20" style="display: none;">
+    <div id="main-app" style="display: none;">
         <!-- Header -->
-        <header id="main-header" class="fixed top-0 left-0 right-0 z-40 mx-2 md:mx-4 mt-2 md:mt-4 rounded-xl bg-white/95 backdrop-blur-md shadow-lg text-white p-2 md:p-3 border border-white/20 transition-colors duration-300">
-            <div class="flex flex-row items-center justify-between">
-                <!-- Left side: Title -->
-                <h1 class="text-lg md:text-xl font-bold flex items-center gap-2 gradient-text">
-                    <span>🥏 Disc Golf Tracker</span>
-                </h1>
+        <header class="main-header">
+            <!-- Center: Title -->
+            <h1>Disc Golf Tracker</h1>
 
-                <!-- Right side: Weather -->
-                <div id="weather-widget" class="flex items-center hidden gap-2 bg-white/20 backdrop-blur-sm px-2 py-1 rounded-lg border border-gray-300/30 shadow-sm cursor-pointer" onclick="loadWeather()" title="Click to refresh weather">
-                    <div id="weather-icon" class="text-base"></div>
-                    <div class="text-xs">
-                        <div id="weather-temp" class="font-semibold text-gray-800"></div>
-                        <!-- <div id="weather-desc" class="text-xs text-gray-700"></div> -->
-                    </div>
-                </div>
+            <!-- Right side: Weather -->
+            <div class="weather-widget" onclick="loadWeather()">
+                <div class="weather-icon material-symbols-rounded">cloud</div>
+                <div class="weather-temperature">19°C</div>
             </div>
         </header>
 
@@ -276,171 +256,130 @@
 
             <!-- Profile Section -->
             <div id="profile" class="section hidden">
-                <div class="bg-white rounded-xl shadow-lg border border-gray-200 p-6">
-                    <div class="flex items-center justify-between mb-6">
-                        <h2 class="text-xl font-bold text-gray-800 flex items-center gap-2">
-                            Your Profile
-                        </h2>
-                        <button onclick="showSettings()" class="p-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 hover:text-gray-800 transition-colors duration-200">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
-                            </svg>
+                <div class="profile-information">
+                    <div class="profile-header">
+                        <img class="profile-picture" src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80" alt="Profile">
+                        <button class="btn-settings">
+                            <span class="material-symbols-rounded">settings</span>
                         </button>
                     </div>
-                    <div class="space-y-4">
-                        <div class="text-center mb-6">
-                            <div class="relative inline-block">
-                                <img id="profile-picture-preview" src="./images/user.png" alt="Profile" class="w-24 h-24 rounded-full border-4 border-indigo-200 shadow-lg mx-auto">
-                                <button type="button" onclick="document.getElementById('profile-picture-input').click()" 
-                                        class="absolute bottom-0 right-0 bg-indigo-600 text-white rounded-full w-8 h-8 flex items-center justify-center text-sm hover:bg-indigo-700 transition-colors">
-                                    📷
-                                </button>
-                            </div>
-                            <input type="file" id="profile-picture-input" accept="image/*" style="display: none;" onchange="previewProfilePicture(event)">
-                            <p class="text-sm text-gray-600 mt-2">Click camera icon to change profile picture</p>
-                        </div>
-                        <div>
-                            <label for="profile-username" class="block text-sm font-semibold text-gray-700 mb-2">Username</label>
-                            <div class="relative">
-                                <input type="text" id="profile-username" placeholder="Enter username" maxlength="20" 
-                                    class="w-full px-4 py-3 pr-16 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                                    oninput="updateCharacterCount('profile-username', 'username-count', 20)">
-                                <div id="username-count" class="absolute right-3 top-1/2 transform -translate-y-1/2 text-xs text-gray-500 font-medium">
-                                    0/20
-                                </div>
-                            </div>
-                        </div>
-                        <div>
-                            <label for="profile-email" class="block text-sm font-semibold text-gray-700 mb-2">Email</label>
-                            <input type="email" id="profile-email" readonly class="w-full px-4 py-3 border border-gray-300 rounded-lg bg-gray-50 cursor-not-allowed">
-                        </div>
-                        <div>
-                            <label for="profile-bio" class="block text-sm font-semibold text-gray-700 mb-2">Bio</label>
-                            <div class="relative">
-                                <textarea id="profile-bio" rows="3" placeholder="Tell us about your disc golf journey..." maxlength="25"
-                                    class="w-full px-4 py-3 pr-16 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 resize-none"
-                                    oninput="updateCharacterCount('profile-bio', 'bio-count', 25)"></textarea>
-                                <div id="bio-count" class="absolute right-3 bottom-3 text-xs text-gray-500 font-medium">
-                                    0/25
-                                </div>
-                            </div>
-                        </div>
-                        <div class="flex flex-col sm:flex-row gap-3">
-                            <button onclick="saveProfile()" class="flex-1 bg-gradient-to-r from-indigo-600 to-purple-600 text-white py-3 px-6 rounded-lg font-semibold hover:shadow-lg transform hover:-translate-y-0.5 transition-all duration-200">
-                                Save Profile
-                            </button>
-                            <button onclick="signOut()" class="flex-1 bg-red-600 text-white py-3 px-6 rounded-lg font-semibold hover:bg-red-700 transition-colors duration-200">
-                                Logout
-                            </button>
-                        </div>
+                    <div class="profile-body">
+                        <h2 class="profile-username">Nicheen</h2>
+                        <p class="profile-bio">Disken kastas kortare!</p>
                     </div>
-                    <!-- Settings Page (initially hidden) -->
-                    <div id="settings-page" class="hidden">
-                        <div class="flex items-center justify-between mb-6">
-                            <button onclick="showProfile()" class="flex items-center gap-2 text-gray-600 hover:text-gray-800 transition-colors duration-200">
-                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
-                                </svg>
-                                Back
-                            </button>
-                            <h2 class="text-xl font-bold text-gray-800">Settings</h2>
-                            <div class="w-16"></div> <!-- Spacer for centering -->
+                    <input type="file" id="profile-picture-input" accept="image/*" style="display: none;">
+                </div>
+
+                <!-- Settings Page (initially hidden) -->
+                <div id="settings-page" class="hidden">
+                    <div class="flex items-center justify-between mb-6">
+                        <button onclick="showProfile()" class="flex items-center gap-2 text-gray-600 hover:text-gray-800 transition-colors duration-200">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
+                            </svg>
+                            Back
+                        </button>
+                        <h2 class="text-xl font-bold text-gray-800">Settings</h2>
+                        <div class="w-16"></div> <!-- Spacer for centering -->
+                    </div>
+                    
+                    <div class="space-y-6">
+                        <!-- Location Settings -->
+                        <div class="bg-gray-50 rounded-xl p-4">
+                            <h3 class="text-lg font-semibold text-gray-800 mb-4">Location</h3>
+                            <div class="space-y-3">
+                                <div class="flex items-center justify-between">
+                                    <div>
+                                        <div class="font-medium text-gray-700">Auto-update location</div>
+                                        <div class="text-sm text-gray-500">Refresh your location every 5 minutes</div>
+                                    </div>
+                                    <label class="switch">
+                                        <input type="checkbox" id="auto-location-toggle" onchange="toggleAutoLocation(this)">
+                                        <span class="slider round"></span>
+                                    </label>
+                                </div>
+                                <button onclick="refreshLocationManually()" class="w-full bg-blue-100 hover:bg-blue-200 text-blue-700 py-2 px-4 rounded-lg text-sm font-medium transition-colors duration-200">
+                                    🔄 Refresh Location Now
+                                </button>
+                                <!-- Add this button in the Location settings section -->
+                                <button onclick="runLocationDiagnostics()" class="w-full bg-purple-100 hover:bg-purple-200 text-purple-700 py-2 px-4 rounded-lg text-sm font-medium transition-colors duration-200">
+                                    🔬 Run GPS Diagnostics
+                                </button>
+                                <div id="location-status" class="text-xs text-gray-500"></div>
+                            </div>
                         </div>
-                        
-                        <div class="space-y-6">
-                            <!-- Location Settings -->
-                            <div class="bg-gray-50 rounded-xl p-4">
-                                <h3 class="text-lg font-semibold text-gray-800 mb-4">Location</h3>
-                                <div class="space-y-3">
-                                    <div class="flex items-center justify-between">
-                                        <div>
-                                            <div class="font-medium text-gray-700">Auto-update location</div>
-                                            <div class="text-sm text-gray-500">Refresh your location every 5 minutes</div>
-                                        </div>
-                                        <label class="switch">
-                                            <input type="checkbox" id="auto-location-toggle" onchange="toggleAutoLocation(this)">
-                                            <span class="slider round"></span>
-                                        </label>
+
+                        <!-- Display Settings -->
+                        <div class="bg-gray-50 rounded-xl p-4">
+                            <h3 class="text-lg font-semibold text-gray-800 mb-4">Display</h3>
+                            <div class="space-y-3">
+                                <div class="flex items-center justify-between">
+                                    <div>
+                                        <div class="font-medium text-gray-700">Show score difference</div>
+                                        <div class="text-sm text-gray-500">Display ±Par instead of total score</div>
                                     </div>
-                                    <button onclick="refreshLocationManually()" class="w-full bg-blue-100 hover:bg-blue-200 text-blue-700 py-2 px-4 rounded-lg text-sm font-medium transition-colors duration-200">
-                                        🔄 Refresh Location Now
-                                    </button>
-                                    <!-- Add this button in the Location settings section -->
-                                    <button onclick="runLocationDiagnostics()" class="w-full bg-purple-100 hover:bg-purple-200 text-purple-700 py-2 px-4 rounded-lg text-sm font-medium transition-colors duration-200">
-                                        🔬 Run GPS Diagnostics
-                                    </button>
-                                    <div id="location-status" class="text-xs text-gray-500"></div>
+                                    <label class="switch">
+                                        <input type="checkbox" id="score-display-toggle" onchange="toggleScoreDisplayGlobal(this)">
+                                        <span class="slider round"></span>
+                                    </label>
                                 </div>
                             </div>
+                        </div>
 
-                            <!-- Display Settings -->
-                            <div class="bg-gray-50 rounded-xl p-4">
-                                <h3 class="text-lg font-semibold text-gray-800 mb-4">Display</h3>
-                                <div class="space-y-3">
-                                    <div class="flex items-center justify-between">
-                                        <div>
-                                            <div class="font-medium text-gray-700">Show score difference</div>
-                                            <div class="text-sm text-gray-500">Display ±Par instead of total score</div>
-                                        </div>
-                                        <label class="switch">
-                                            <input type="checkbox" id="score-display-toggle" onchange="toggleScoreDisplayGlobal(this)">
-                                            <span class="slider round"></span>
-                                        </label>
-                                    </div>
-                                </div>
+                        <!-- Data Settings -->
+                        <div class="bg-gray-50 rounded-xl p-4">
+                            <h3 class="text-lg font-semibold text-gray-800 mb-4">Data</h3>
+                            <div class="space-y-3">
+                                <button onclick="clearCacheData()" class="w-full bg-orange-100 hover:bg-orange-200 text-orange-700 py-2 px-4 rounded-lg text-sm font-medium transition-colors duration-200">
+                                    🗑️ Clear Cache Data
+                                </button>
+                                <div class="text-xs text-gray-500">Clear cached course and profile data</div>
                             </div>
+                        </div>
 
-                            <!-- Data Settings -->
-                            <div class="bg-gray-50 rounded-xl p-4">
-                                <h3 class="text-lg font-semibold text-gray-800 mb-4">Data</h3>
-                                <div class="space-y-3">
-                                    <button onclick="clearCacheData()" class="w-full bg-orange-100 hover:bg-orange-200 text-orange-700 py-2 px-4 rounded-lg text-sm font-medium transition-colors duration-200">
-                                        🗑️ Clear Cache Data
-                                    </button>
-                                    <div class="text-xs text-gray-500">Clear cached course and profile data</div>
-                                </div>
-                            </div>
-
-                            <!-- About Section -->
-                            <div class="bg-gray-50 rounded-xl p-4">
-                                <h3 class="text-lg font-semibold text-gray-800 mb-4">About</h3>
-                                <div class="text-sm text-gray-600 space-y-2">
-                                    <div>Disc Golf Tracker v1.0</div>
-                                    <div>Track your rounds, improve your game</div>
-                                </div>
+                        <!-- About Section -->
+                        <div class="bg-gray-50 rounded-xl p-4">
+                            <h3 class="text-lg font-semibold text-gray-800 mb-4">About</h3>
+                            <div class="text-sm text-gray-600 space-y-2">
+                                <div>Disc Golf Tracker v1.0</div>
+                                <div>Track your rounds, improve your game</div>
                             </div>
                         </div>
                     </div>
                 </div>
+                
             </div>
         </div>
 
-        <!-- Fixed Bottom Navigation -->
-        <nav class="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-gray-200 px-2 py-2 z-50 shadow-lg">
-            <div class="flex items-center max-w-6xl mx-auto">
-                <button class="nav-btn flex-1 flex flex-col items-center gap-1 py-1 rounded-lg font-medium transition-all duration-200 bg-indigo-600 text-white" onclick="showSectionWithLoadingProtection('new-round')">
-                    <span class="text-xl">🥏</span>
-                    <span class="text-xs">Round</span>
-                </button>
-                <button class="nav-btn flex-1 flex flex-col items-center gap-1 py-1 rounded-lg font-medium transition-all duration-200 text-gray-600 hover:text-indigo-600 hover:bg-indigo-50" onclick="showSectionWithLoadingProtection('history')">
-                    <span class="text-xl">📝</span>
-                    <span class="text-xs">History</span>
-                </button>
-                <button class="nav-btn flex-1 flex flex-col items-center gap-1 py-1 rounded-lg font-medium transition-all duration-200 text-gray-600 hover:text-indigo-600 hover:bg-indigo-50" onclick="showSectionWithLoadingProtection('progress')">
-                    <span class="text-xl">📈</span>
-                    <span class="text-xs">Progress</span>
-                </button>
-                <button class="nav-btn flex-1 flex flex-col items-center gap-1 py-1 rounded-lg font-medium transition-all duration-200 text-gray-600 hover:text-indigo-600 hover:bg-indigo-50" onclick="showSectionWithLoadingProtection('friends')">
-                    <span class="text-xl">👥</span>
-                    <span class="text-xs">Friends</span>
-                </button>
-                <button class="nav-btn flex-1 flex flex-col items-center gap-1 py-1 rounded-lg font-medium transition-all duration-200 text-gray-600 hover:text-indigo-600 hover:bg-indigo-50" onclick="showSectionWithLoadingProtection('profile')">
-                    <img id="user-avatar" src="./images/user.png" alt="User" class="w-7 h-7 rounded-full border-2 border-black/50">
-                    <span class="text-xs">Profile</span>
-                </button>
-            </div>
+        <!-- Bottom Navigation -->
+        <nav class="bottom-navigation-bar">
+            <button class="nav-btn" id="analytics" onclick="showSectionWithLoadingProtection('progress')">
+                <span class="material-symbols-rounded">analytics</span>
+                <a class="notification-circle"></a>
+                <p class="text-xs">Progress</p>
+            </button>
+            <button class="nav-btn" id="friends" onclick="showSectionWithLoadingProtection('friends')">
+                <span class="material-symbols-rounded">group</span>
+                <a class="notification-circle"></a>
+                <p class="text-xs">Friends</p>
+            </button>
+            <button class="nav-btn plus-btn" id="new-round" onclick="showSectionWithLoadingProtection('new-round')">
+                <span class="material-symbols-rounded">add_2</span>
+                <a class="notification-circle"></a>
+            </button>
+            <button class="nav-btn" id="history" onclick="showSectionWithLoadingProtection('history')">
+                <span class="material-symbols-rounded">history</span>
+                <a class="notification-circle"></a>
+                <p class="text-xs">History</p>
+            </button>
+            <button class="nav-btn" id="profile" onclick="showSectionWithLoadingProtection('profile')">
+                <img id="user-avatar" src="./images/user.png" alt="User" class="w-7 h-7 rounded-full border-2 border-black/50">
+                <a class="notification-circle"></a>
+                <p class="text-xs">Profile</p>
+            </button>
         </nav>
     </div>
+
+    
 </body>
 </html>

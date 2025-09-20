@@ -552,6 +552,39 @@ async function signOut() {
     }
 }
 
+async function signInWithGoogle() {
+    try {
+        const { data, error } = await supabase.auth.signInWithOAuth({
+            provider: 'google',
+            options: {
+                redirectTo: `${window.location.origin}/`, // Redirect back to your app
+                queryParams: {
+                    access_type: 'offline',
+                    prompt: 'consent',
+                }
+            }
+        });
+
+        if (error) {
+            console.error('Google sign-in error:', error);
+            Swal.fire({
+                icon: "error",
+                title: "Authentication Error",
+                text: error.message,
+            });
+        }
+        // Note: The actual sign-in happens via redirect, so we won't reach this point
+        // The success handling will occur when the user is redirected back
+    } catch (err) {
+        console.error('Unexpected error during Google sign-in:', err);
+        Swal.fire({
+            icon: "error",
+            title: "Unexpected Error",
+            text: "Something went wrong during authentication. Please try again.",
+        });
+    }
+}
+
 // Load profile data when logged in
 async function refreshLocation() {
     const button = event.target;
@@ -2640,12 +2673,6 @@ function showSection(sectionId) {
         targetSection.classList.add('active');
         targetSection.classList.remove('hidden');
     }
-    
-    // Update navigation button states - reset all first
-    document.querySelectorAll('.nav-btn').forEach(btn => {
-        btn.classList.remove('bg-indigo-600', 'text-white');
-        btn.classList.add('text-gray-600', 'hover:text-indigo-600', 'hover:bg-indigo-50');
-    });
     
     // Find and activate the correct button
     const buttons = document.querySelectorAll('.nav-btn');
@@ -4840,7 +4867,7 @@ async function deleteRound(roundId) {
 async function loginSuccessful() {
     // Add this to your loginSuccessful function or early in the app
     addRainAnimationStyles();
-    document.getElementById('login-screen').style.display = 'none';
+    document.getElementsByClassName('login-screen')[0].style.display = 'none';
     document.getElementById('main-app').style.display = 'block';
     
     // Show loading state for weather
@@ -4889,7 +4916,7 @@ async function loginSuccessful() {
 }
 
 function signOutSuccessful() {
-    document.getElementById('login-screen').style.display = 'block';
+    document.getElementsByClassName('login-screen')[0].style.display = 'block';
     document.getElementById('main-app').style.display = 'none';
 }
 
@@ -5068,10 +5095,21 @@ function closeCroppieModal() {
     const modal = document.getElementById('croppie-modal');
     if (modal) {
         modal.style.display = 'none';
+        
+        // Clear the croppie container
+        const container = document.getElementById('croppie-container');
+        if (container) {
+            container.innerHTML = '';
+        }
     }
     
+    // Destroy croppie instance
     if (croppieInstance) {
-        croppieInstance.destroy();
+        try {
+            croppieInstance.destroy();
+        } catch (error) {
+            console.warn('Error destroying croppie instance:', error);
+        }
         croppieInstance = null;
     }
 }
@@ -5384,12 +5422,6 @@ function switchAuthMode(mode) {
 }
 
 function resetAppState() {
-    // Reset navigation
-    document.querySelectorAll('.nav-btn').forEach(btn => {
-        btn.classList.remove('bg-indigo-600', 'text-white');
-        btn.classList.add('text-gray-600', 'hover:text-indigo-600', 'hover:bg-indigo-50');
-    });
-    
     // Reset sections
     document.querySelectorAll('.section').forEach(section => {
         section.classList.remove('active');
@@ -5894,6 +5926,7 @@ function updateLocationStatus() {
 // Add to window exports
 window.updatePlayerScoreDisplay = updatePlayerScoreDisplay;
 window.setScoreToPar = setScoreToPar;
+window.signInWithGoogle = signInWithGoogle;
 window.handlePasswordReset = handlePasswordReset;
 window.showSettings = showSettings;
 window.showProfile = showProfile;
@@ -5953,6 +5986,7 @@ window.updateProgress = updateProgress;
 window.loadHistory = loadHistory;
 window.changeHole = changeHole;
 window.goToHole = goToHole;
+window.closeCroppieModal = closeCroppieModal;
 window.deleteCurrentRound = deleteCurrentRound;
 window.deleteRoundFromDetails = deleteRoundFromDetails;
 window.copyRoundToText = copyRoundToText;
@@ -6042,7 +6076,7 @@ window.addEventListener("DOMContentLoaded", async () => {
 
 window.addEventListener("scroll", () => {
     const currentScroll = window.scrollY;
-    const header = document.getElementById("main-header");
+    const header = document.getElementsByClassName("main-header");
 
     if (currentScroll < fadeStartDistance) {
         // Fully visible
@@ -6089,3 +6123,14 @@ document.addEventListener('keydown', function(event) {
         toggleDebugRain();
     }
 });
+
+document.querySelectorAll('.bottom-navigation-bar .nav-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    // remove active from all buttons
+    document.querySelectorAll('.bottom-navigation-bar .nav-btn')
+            .forEach(b => b.classList.remove('active'));
+    // add active to the clicked one
+    btn.classList.add('active');
+  });
+});
+
