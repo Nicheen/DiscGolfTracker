@@ -372,15 +372,8 @@ function displayCourses() {
             ${isPeekCard ? '<div class="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-white z-10 pointer-events-none"></div>' : ''}
             <div class="p-3 ${isPeekCard ? 'relative z-0' : ''} relative">
                 <!-- Background emoji with weather overlay -->
-                <div class="absolute top-2 right-2 w-12 h-12 flex items-center justify-center text-4xl opacity-20 pointer-events-none z-0">
+                <div class="material-symbols-rounded absolute top-2 right-2 w-34 h-23 flex items-center justify-center text-4xl opacity-20 pointer-events-none z-0">
                     ${getCourseEmoji(course.name)}
-                    ${course.weather ? `
-                        <div class="absolute -top-1 -right-1 transform rotate-12 z-10">
-                            <span class="bg-gradient-to-r ${course.weather.isRaining ? 'from-blue-500 to-blue-600' : 'from-gray-600 to-gray-700'} text-white text-xs font-bold px-1.5 py-0.5 rounded-full shadow-lg opacity-90 whitespace-nowrap">
-                                ${course.weather.isRaining ? '🌧️' : getWeatherEmoji(course.weather.main, course.weather.temperature)} ${course.weather.temperature}°
-                            </span>
-                        </div>
-                    ` : ''}
                 </div>
                 
                 <!-- Content container with higher z-index -->
@@ -1492,48 +1485,18 @@ function getCourseEmoji(name) {
     const namePattern = name.toLowerCase();
     
     // Specific Uppsala area courses
-    if (namePattern.includes('domarringen')) return '👑'; // "Domare" = Judge, royal theme
-    if (namePattern.includes('rosendal')) return '🌹'; // Rose valley
-    if (namePattern.includes('röbo')) return '🌊'; // Water/stream theme
-    if (namePattern.includes('ultuna')) return '🎓'; // University/academic area
-    if (namePattern.includes('gamla uppsala')) return '⚔️'; // Ancient Uppsala, Viking theme
-    if (namePattern.includes('uppsala')) return '🏛️'; // Historic university city
+    if (namePattern.includes('domarringen')) return 'crown'; // "Domare" = Judge, royal theme
+    if (namePattern.includes('rosendal')) return 'deceased'; // Rose valley
+    if (namePattern.includes('röbo')) return 'water'; // Water/stream theme
+    if (namePattern.includes('ultuna')) return 'school'; // University/academic area
+    if (namePattern.includes('gamla uppsala')) return 'shield'; // Ancient Uppsala, Viking theme
+    if (namePattern.includes('uppsala')) return 'account_balance'; // Historic university city
+    if (namePattern.includes('gimo')) return 'agriculture'; // Already defined
+    if (namePattern.includes('malmaskolan')) return 'school'; // "Skolan" = school
+    if (namePattern.includes('gipen')) return 'landscape'; // Natural area name
     
-    // Swedish nature themes
-    if (namePattern.includes('skog') || namePattern.includes('forest')) return '🌲';
-    if (namePattern.includes('sjö') || namePattern.includes('lake')) return '🏞️';
-    if (namePattern.includes('berg') || namePattern.includes('mountain') || namePattern.includes('hill')) return '⛰️';
-    if (namePattern.includes('strand') || namePattern.includes('beach')) return '🏖️';
-    if (namePattern.includes('dal') || namePattern.includes('valley')) return '🌄';
-    if (namePattern.includes('åker') || namePattern.includes('field')) return '🌾';
-    if (namePattern.includes('myr') || namePattern.includes('bog')) return '🌿';
-    
-    // Swedish place name endings and themes
-    if (namePattern.includes('holm') || namePattern.includes('ö')) return '🏝️'; // Island
-    if (namePattern.includes('by') || namePattern.includes('stad')) return '🏘️'; // Town/city
-    if (namePattern.includes('torp') || namePattern.includes('gård')) return '🏡'; // Farm/homestead
-    if (namePattern.includes('kyrka') || namePattern.includes('church')) return '⛪';
-    if (namePattern.includes('slott') || namePattern.includes('castle')) return '🏰';
-    
-    // Difficulty indicators
-    if (namePattern.includes('lätt') || namePattern.includes('easy') || namePattern.includes('nybörjare')) return '🟢';
-    if (namePattern.includes('svår') || namePattern.includes('hard') || namePattern.includes('championship') || namePattern.includes('pro')) return '🔴';
-    if (namePattern.includes('medel') || namePattern.includes('medium')) return '🟡';
-    
-    // Weather and seasonal themes
-    if (namePattern.includes('vinter') || namePattern.includes('winter')) return '❄️';
-    if (namePattern.includes('sommar') || namePattern.includes('summer')) return '☀️';
-    if (namePattern.includes('höst') || namePattern.includes('autumn')) return '🍂';
-    if (namePattern.includes('vår') || namePattern.includes('spring')) return '🌸';
-    
-    // Fun Swedish cultural references
-    if (namePattern.includes('viking') || namePattern.includes('tor')) return '⚡';
-    if (namePattern.includes('midsommar')) return '🌻';
-    if (namePattern.includes('lucia')) return '👑';
-    if (namePattern.includes('krona') || namePattern.includes('crown')) return '👑';
-    
-    // Default disc golf emoji
-    return '🥏';
+    // Default disc golf icon
+    return 'sports'; // Generic sports icon as default
 }
 
 // Calculate distance between two coordinates using Haversine formula
@@ -2640,12 +2603,6 @@ function showSection(sectionId) {
         targetSection.classList.add('active');
         targetSection.classList.remove('hidden');
     }
-    
-    // Update navigation button states - reset all first
-    document.querySelectorAll('.nav-btn').forEach(btn => {
-        btn.classList.remove('bg-indigo-600', 'text-white');
-        btn.classList.add('text-gray-600', 'hover:text-indigo-600', 'hover:bg-indigo-50');
-    });
     
     // Find and activate the correct button
     const buttons = document.querySelectorAll('.nav-btn');
@@ -4976,41 +4933,128 @@ function previewProfilePicture(event) {
 }
 
 let croppieInstance = null;
+let isInitializing = false;
 
 function initializeCroppie(imageSrc) {
+    // Prevent multiple initializations
+    if (isInitializing) {
+        return;
+    }
+
+    isInitializing = true;
+
     initializeCroppieModal();
     
     const container = document.getElementById('croppie-container');
     
     // Destroy existing instance if it exists
     if (croppieInstance) {
-        croppieInstance.destroy();
+        try {
+            croppieInstance.destroy();
+        } catch (error) {
+            console.warn('Error destroying previous croppie instance:', error);
+        }
+        croppieInstance = null;
     }
+
+    // Clear container before creating new instance
+    container.innerHTML = '';
     
-    // Create new Croppie instance
-    croppieInstance = new Croppie(container, {
-        viewport: {
-            width: 200,
-            height: 200,
-            type: 'circle' // or 'square' based on your preference
-        },
-        boundary: {
-            width: 300,
-            height: 300
-        },
-        showZoomer: true,
-        enableResize: false,
-        enableOrientation: true,
-        mouseWheelZoom: 'ctrl'
-    });
-    
-    // Bind the image
-    croppieInstance.bind({
-        url: imageSrc
-    });
-    
-    // Show modal
-    document.getElementById('croppie-modal').style.display = 'block';
+    setTimeout(() => {
+        try {
+            // Create new Croppie instance
+            croppieInstance = new Croppie(container, {
+                viewport: {
+                    width: 200,
+                    height: 200,
+                    type: 'circle'
+                },
+                boundary: {
+                    width: 300,
+                    height: 300
+                },
+                showZoomer: true,
+                enableResize: false,
+                enableOrientation: true,
+                mouseWheelZoom: 'ctrl',
+                enableExif: true
+            });
+            
+            // Load image and get its dimensions first
+            const img = new Image();
+            img.onload = function() {
+                const imageWidth = img.naturalWidth;
+                const imageHeight = img.naturalHeight;
+                const viewportSize = 200;
+                
+                // Calculate appropriate zoom level to fit image nicely in viewport
+                const scaleX = viewportSize / imageWidth;
+                const scaleY = viewportSize / imageHeight;
+                const minZoom = Math.min(scaleX, scaleY) * 0.8; // Allow zooming out a bit
+                const maxZoom = 2.0; // Allow reasonable zoom in
+                const initialZoom = Math.min(Math.max(scaleX, scaleY), 1) * 1.1; // Slightly bigger than minimum fit
+                
+                // Bind the image with calculated zoom
+                croppieInstance.bind({
+                    url: imageSrc,
+                    zoom: initialZoom
+                }).then(() => {
+                    // Fix the zoom slider sensitivity after binding
+                    setTimeout(() => {
+                        const zoomSlider = container.querySelector('.cr-slider');
+                        if (zoomSlider) {
+                            // Override the step value to make it less sensitive
+                            zoomSlider.step = '0.01'; // Much less sensitive
+                            zoomSlider.min = minZoom;
+                            zoomSlider.max = maxZoom;
+                            zoomSlider.value = initialZoom;
+
+                            // ACTIVATE THE IMAGE by triggering a zoom event
+                            const event = new Event('input', { bubbles: true });
+                            zoomSlider.dispatchEvent(event);
+
+                            // Also programmatically trigger zoom change to activate dragging
+                            croppieInstance.setZoom(initialZoom);
+                            
+                            // Also add custom event listener for better control
+                            zoomSlider.addEventListener('input', function(e) {
+                                const zoomValue = parseFloat(e.target.value);
+                                if (croppieInstance && !isNaN(zoomValue)) {
+                                    croppieInstance.setZoom(zoomValue);
+                                }
+                            });
+                        }
+
+                        // Additional activation - trigger a slight zoom change
+                        setTimeout(() => {
+                            const currentZoom = croppieInstance.get().zoom;
+                            croppieInstance.setZoom(currentZoom + 0.001);
+                            croppieInstance.setZoom(currentZoom);
+                        }, 100);
+                        
+                    }, 100);
+                    
+                    // Show modal only after binding is complete
+                    document.getElementById('croppie-modal').style.display = 'block';
+                    isInitializing = false;
+                }).catch((error) => {
+                    console.error('Error binding image to croppie:', error);
+                    isInitializing = false;
+                });
+            };
+            
+            img.onerror = function() {
+                console.error('Error loading image for croppie');
+                isInitializing = false;
+            };
+            
+            img.src = imageSrc;
+            
+        } catch (error) {
+            console.error('Error creating croppie instance:', error);
+            isInitializing = false;
+        }
+    }, 100);
 }
 
 function initializeCroppieModal() {
@@ -5025,20 +5069,30 @@ function initializeCroppieModal() {
                     </div>
                     <div class="modal-body">
                         <div id="croppie-container"></div>
-                        <div style="margin-top: 15px; text-align: center;">
+                        <div style="margin: 15px 0; text-align: center;">
                             <button type="button" onclick="applyCrop()" class="btn btn-primary">Apply Crop</button>
-                            <button type="button" onclick="closeCroppieModal()" class="btn btn-secondary">Cancel</button>
                         </div>
                     </div>
                 </div>
             </div>
         `;
         document.body.insertAdjacentHTML('beforeend', modalHTML);
+        
+        // Add click outside to close functionality
+        const modal = document.getElementById('croppie-modal');
+        modal.addEventListener('click', function(event) {
+            if (event.target === modal) {
+                closeCroppieModal();
+            }
+        });
     }
 }
 
 async function applyCrop() {
-    if (!croppieInstance) return;
+    if (!croppieInstance) {
+        console.warn('No croppie instance available');
+        return;
+    }
     
     try {
         const croppedBase64 = await croppieInstance.result({
@@ -5051,16 +5105,23 @@ async function applyCrop() {
         
         // Update the preview and selected picture
         selectedProfilePicture = croppedBase64;
-        document.getElementById('profile-picture-preview').src = croppedBase64;
+        const previewElement = document.getElementById('profile-picture-preview');
+        if (previewElement) {
+            previewElement.src = croppedBase64;
+        }
         
         closeCroppieModal();
     } catch (error) {
         console.error('Error applying crop:', error);
-        Swal.fire({
-            icon: "error",
-            title: "Crop Failed",
-            text: "Failed to apply crop. Please try again.",
-        });
+        if (typeof Swal !== 'undefined') {
+            Swal.fire({
+                icon: "error",
+                title: "Crop Failed",
+                text: "Failed to apply crop. Please try again.",
+            });
+        } else {
+            alert('Failed to apply crop. Please try again.');
+        }
     }
 }
 
@@ -5070,10 +5131,32 @@ function closeCroppieModal() {
         modal.style.display = 'none';
     }
     
+    // Clean up croppie instance with proper error handling
     if (croppieInstance) {
-        croppieInstance.destroy();
-        croppieInstance = null;
+        try {
+            // Give any pending operations a moment to complete
+            setTimeout(() => {
+                try {
+                    croppieInstance.destroy();
+                } catch (error) {
+                    console.warn('Error destroying croppie instance:', error);
+                } finally {
+                    croppieInstance = null;
+                    // Clear the container after destroying
+                    const container = document.getElementById('croppie-container');
+                    if (container) {
+                        container.innerHTML = '';
+                    }
+                }
+            }, 50);
+        } catch (error) {
+            console.warn('Error in cleanup process:', error);
+            croppieInstance = null;
+        }
     }
+    
+    // Reset initialization flag
+    isInitializing = false;
 }
 
 function compressImageFile(file, maxSizeMB = 1, callback) {
@@ -5384,12 +5467,6 @@ function switchAuthMode(mode) {
 }
 
 function resetAppState() {
-    // Reset navigation
-    document.querySelectorAll('.nav-btn').forEach(btn => {
-        btn.classList.remove('bg-indigo-600', 'text-white');
-        btn.classList.add('text-gray-600', 'hover:text-indigo-600', 'hover:bg-indigo-50');
-    });
-    
     // Reset sections
     document.querySelectorAll('.section').forEach(section => {
         section.classList.remove('active');
@@ -5939,6 +6016,7 @@ window.getPositionText = getPositionText;
 window.getPositionBadgeColor = getPositionBadgeColor;
 window.loadCurrentRound = loadCurrentRound;
 window.startRound = startRound;
+window.closeCroppieModal = closeCroppieModal;
 window.updateScore = updateScore;
 window.finishRound = finishRound;
 window.checkForIncompleteRounds = checkForIncompleteRounds;
@@ -6088,4 +6166,14 @@ document.addEventListener('keydown', function(event) {
         console.log('🌧️ Rain debug triggered by Ctrl+R!');
         toggleDebugRain();
     }
+});
+
+document.querySelectorAll('.bottom-navigation-bar .nav-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    // remove active from all buttons
+    document.querySelectorAll('.bottom-navigation-bar .nav-btn')
+            .forEach(b => b.classList.remove('active'));
+    // add active to the clicked one
+    btn.classList.add('active');
+  });
 });
