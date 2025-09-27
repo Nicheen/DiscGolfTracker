@@ -222,9 +222,9 @@ async function updateUserLocation() {
     }
 }
 
-function toggleNewRoundSection() {
+function toggleNewRoundSection(event) {
     // Only proceed if the click wasn't on a button or interactive element
-    if (event && event.target) {
+    if (event && event.target && false) {
         // Don't toggle if clicking on buttons, links, or interactive elements
         if (event.target.tagName === 'BUTTON' || 
             event.target.tagName === 'A' || 
@@ -359,16 +359,17 @@ function displayCourses() {
         } else {
             cardClasses += ' p-3 hover:border-indigo-400 hover:shadow-md hover:-translate-y-0.5';
             courseCard.onclick = () => selectCourse(course.id, courseCard);
+            courseCard.ondblclick = (e) => {
+                e.stopPropagation();
+                selectCourse(course.id, courseCard);
+                startRound();
+            };
         }
         
         courseCard.className = cardClasses;
         courseCard.style.position = 'relative';
         courseCard.style.overflow = 'hidden';
-        courseCard.ondblclick = (e) => {
-            e.stopPropagation();
-            selectCourse(course.id, courseCard);
-            startRound();
-        }
+        
         // Store course ID on the element for rain restoration
         courseCard.dataset.courseId = course.id;
 
@@ -1950,7 +1951,7 @@ async function loadFriends() {
         // First get friendships
         const { data: friendships, error: friendshipError } = await supabase
             .from('friendships')
-            .select('friend_id, user_id')
+            .select('friend_id, user_id, is_favorite')
             .or(`user_id.eq.${user.id},friend_id.eq.${user.id}`)
             .eq('status', 'accepted');
 
@@ -1969,10 +1970,13 @@ async function loadFriends() {
             return;
         }
 
+        const friendData = friendships.map(f => ({
+            id: f.user_id === user.id ? f.friend_id : f.user_id,
+            is_favorite: f.is_favorite || false
+        }));
+
         // Get friend IDs
-        const friendIds = friendships.map(f => 
-            f.user_id === user.id ? f.friend_id : f.user_id
-        );
+        const friendIds = friendData.map(f => f.id);
 
         // Get friend profiles in one query
         const { data: friendProfiles, error: profileError } = await supabase
@@ -1995,6 +1999,20 @@ async function loadFriends() {
 
         container.innerHTML = '';
         container.className = 'space-y-3';
+
+        
+        // After getting friendProfiles, sort by favorite status
+        friendProfiles.sort((a, b) => {
+            const aFavorite = friendData.find(fd => fd.id === a.id)?.is_favorite || false;
+            const bFavorite = friendData.find(fd => fd.id === b.id)?.is_favorite || false;
+            
+            // Favorites first
+            if (aFavorite && !bFavorite) return -1;
+            if (!aFavorite && bFavorite) return 1;
+            
+            // Then alphabetically by username
+            return a.username.localeCompare(b.username);
+        });
 
         // Display each friend with their stats
         friendProfiles.forEach(friend => {
@@ -2020,6 +2038,11 @@ async function loadFriends() {
             const avgScore = totalRounds > 0 ? (scores.reduce((a, b) => a + b, 0) / totalRounds).toFixed(1) : '-';
             const bestScore = totalRounds > 0 ? Math.min(...scores) : '-';
 
+            // Get favorite status
+            const friendDataItem = friendData.find(fd => fd.id === friend.id);
+            const isFavorite = friendDataItem?.is_favorite || false;
+            friend.is_favorite = isFavorite; // Add to friend object for showFriendDetails
+
             const card = document.createElement('div');
             const profilePicSrc = friend.profile_picture_base64 || "./images/user.png";
             card.className = 'friend-card-new bg-white rounded-xl p-4 shadow-md hover:shadow-lg transition-all duration-200 cursor-pointer border border-gray-100 hover:border-indigo-200';
@@ -2031,7 +2054,15 @@ async function loadFriends() {
                         <img src="${profilePicSrc}" alt="${friend.username}" 
                             class="w-12 h-12 rounded-full border-2 border-indigo-200 object-cover flex-shrink-0">
                         <div class="min-w-0 flex-1">
-                            <h4 class="font-semibold text-gray-900 text-sm truncate">${friend.username}</h4>
+                            <div class="flex items-center gap-1">
+                                <h4 class="font-semibold text-gray-900 text-sm truncate">${friend.username}</h4>
+                                <button onclick="event.stopPropagation(); toggleFriendFavorite('${friend.id}', '${friend.username}')" 
+                                        class="hover:scale-110 transition-transform duration-200 flex-shrink-0">
+                                    <span class="material-symbols-rounded ${isFavorite ? 'text-yellow-400 star-filled' : 'text-gray-400 star-outlined'}">
+                                        star
+                                    </span>
+                                </button>
+                            </div>
                             <p class="text-xs text-gray-500 truncate">${friend.bio || 'No bio set'}</p>
                             <div class="flex items-center space-x-3 mt-1 text-xs text-gray-600">
                                 <span>${totalRounds} rounds</span>
@@ -2053,6 +2084,7 @@ async function loadFriends() {
             
             container.appendChild(card);
         });
+
     } catch (error) {
         console.error('Error loading friends:', error);
         container.innerHTML = '<div style="text-align: center; color: #dc3545;">Error loading friends</div>';
@@ -2158,7 +2190,14 @@ async function showFriendDetails(friend, stats) {
                         <img src="${profilePicSrc}" alt="${friend.username}" 
                             class="w-16 h-16 rounded-full border-3 border-indigo-200 object-cover">
                         <div>
-                            <h3 class="text-xl font-bold text-gray-900">${friend.username}</h3>
+                            <div class="flex items-center gap-2">
+                                <h3 class="text-xl font-bold text-gray-900">${friend.username}</h3>
+                                <button onclick="event.stopPropagation(); toggleFriendFavorite('${friend.id}', '${friend.username}')" 
+                                        class="text-2xl hover:scale-110 transition-transform duration-200" 
+                                        id="favorite-star-${friend.id}">
+                                    ${friend.is_favorite ? '⭐' : '☆'}
+                                </button>
+                            </div>
                             <p class="text-gray-600 text-sm">${friend.bio || 'No bio set'}</p>
                         </div>
                     </div>
@@ -2197,6 +2236,56 @@ async function showFriendDetails(friend, stats) {
             icon: "error",
             title: "Error",
             text: "Could not load friend details",
+        });
+    }
+}
+
+async function toggleFriendFavorite(friendId, friendUsername) {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    try {
+        // Get current friendship
+        const { data: friendship, error: fetchError } = await supabase
+            .from('friendships')
+            .select('is_favorite')
+            .or(`and(user_id.eq.${user.id},friend_id.eq.${friendId}),and(user_id.eq.${friendId},friend_id.eq.${user.id})`)
+            .single();
+
+        if (fetchError) {
+            console.error('Error fetching friendship:', fetchError);
+            return;
+        }
+
+        const newFavoriteStatus = !friendship.is_favorite;
+
+        // Update friendship
+        const { error: updateError } = await supabase
+            .from('friendships')
+            .update({ is_favorite: newFavoriteStatus })
+            .or(`and(user_id.eq.${user.id},friend_id.eq.${friendId}),and(user_id.eq.${friendId},friend_id.eq.${user.id})`);
+
+        if (updateError) {
+            throw updateError;
+        }
+
+        // Update the star icon in the modal if it exists
+        const starButton = document.getElementById(`favorite-star-${friendId}`);
+        if (starButton) {
+            starButton.textContent = newFavoriteStatus ? '⭐' : '☆';
+        }
+
+        // Reload friends list to update order
+        loadFriends();
+
+    } catch (error) {
+        console.error('Error toggling favorite:', error);
+        Swal.fire({
+            icon: "error",
+            title: "Error",
+            text: "Could not update favorite status",
+            timer: 2000,
+            showConfirmButton: false
         });
     }
 }
@@ -3733,7 +3822,8 @@ async function loadHistory() {
             } else if (dateObj.toDateString() === yesterday.toDateString()) {
                 displayDate = 'Yesterday';
             } else {
-                displayDate = 'Others';
+                displayDate = date;
+                date = "";
             }
 
             dateGroup.innerHTML = `
@@ -4235,24 +4325,69 @@ function updateScoreDistribution(roundsWithDetails) {
         return;
     }
 
-    Object.entries(scoreTypes).forEach(([type, count]) => {
-        const percentage = totalHoles > 0 ? (count / totalHoles * 100).toFixed(1) : 0;
-        const color = getScoreTypeColor(type);
+    // Create stacked bar visualization
+    const stackedBar = document.createElement('div');
+    stackedBar.className = 'mb-6';
+
+    // Bar container
+    const barContainer = document.createElement('div');
+    barContainer.className = 'w-full h-5 bg-gray-200 rounded-full overflow-hidden flex';
+    
+    // Score type colors and order (from best to worst)
+    const scoreOrder = [
+        { key: 'Ace (Hole-in-one)', label: 'Ace', color: 'bg-purple-600', textColor: 'text-purple-600' },
+        { key: 'Albatross (-3)', label: 'Albatross', color: 'bg-purple-500', textColor: 'text-purple-500' },
+        { key: 'Eagle (-2)', label: 'Eagle', color: 'bg-blue-500', textColor: 'text-blue-500' },
+        { key: 'Birdie (-1)', label: 'Birdie', color: 'bg-green-500', textColor: 'text-green-500' },
+        { key: 'Par (E)', label: 'Par', color: 'bg-gray-400', textColor: 'text-gray-600' },
+        { key: 'Bogey (+1)', label: 'Bogey', color: 'bg-yellow-500', textColor: 'text-yellow-600' },
+        { key: 'Double Bogey (+2)', label: 'Double', color: 'bg-orange-500', textColor: 'text-orange-600' },
+        { key: 'Triple+ (+3)', label: 'Triple+', color: 'bg-red-500', textColor: 'text-red-600' }
+    ];
+
+    // Create segments
+    scoreOrder.forEach(scoreType => {
+        const count = scoreTypes[scoreType.key];
+        const percentage = totalHoles > 0 ? (count / totalHoles * 100) : 0;
         
-        if (count > 0 || ['Birdie (-1)', 'Par (E)', 'Bogey (+1)', 'Double Bogey (+2)'].includes(type)) {
-            const bar = document.createElement('div');
-            bar.className = `flex items-center justify-between p-3 rounded-lg relative overflow-hidden ${color}`;
-            bar.style.background = `linear-gradient(to right, ${getColorForPercentage(color)} ${Math.max(percentage, 2)}%, rgba(255,255,255,0.9) ${Math.max(percentage, 2)}%)`;
-            bar.innerHTML = `
-                <span class="font-medium text-sm text-gray-800 relative z-10">${type}</span>
-                <div class="flex items-center gap-3 relative z-10">
-                    <span class="text-xs font-semibold text-gray-700">${percentage}%</span>
-                    <span class="font-bold text-sm text-gray-800 min-w-[2rem] text-right">${count}</span>
-                </div>
-            `;
-            distributionContainer.appendChild(bar);
+        if (count > 0) {
+            const segment = document.createElement('div');
+            segment.className = `${scoreType.color} flex items-center justify-center transition-all duration-300 hover:opacity-80`;
+            segment.style.width = `${percentage}%`;
+            segment.title = `${scoreType.label}: ${count} (${percentage.toFixed(1)}%)`;
+            
+            // Only show text if segment is wide enough
+            if (percentage > 8) {
+                segment.innerHTML = `<span class="text-white text-xs font-semibold">${count}</span>`;
+            }
+            
+            barContainer.appendChild(segment);
         }
     });
+
+    stackedBar.appendChild(barContainer);
+
+    // Legend below the bar
+    const legend = document.createElement('div');
+    legend.className = 'mt-4 grid grid-cols-2 md:grid-cols-4 gap-2 text-xs';
+    
+    scoreOrder.forEach(scoreType => {
+        const count = scoreTypes[scoreType.key];
+        const percentage = totalHoles > 0 ? (count / totalHoles * 100).toFixed(1) : 0;
+        
+        if (count > 0) {
+            const legendItem = document.createElement('div');
+            legendItem.className = 'flex items-center gap-2';
+            legendItem.innerHTML = `
+                <div class="w-3 h-3 ${scoreType.color} rounded"></div>
+                <span class="${scoreType.textColor} font-medium">${scoreType.label}: ${count} (${percentage}%)</span>
+            `;
+            legend.appendChild(legendItem);
+        }
+    });
+
+    stackedBar.appendChild(legend);
+    distributionContainer.appendChild(stackedBar);
 }
 
 function getColorForPercentage(gradientClass) {
@@ -6035,6 +6170,7 @@ window.updateProgress = updateProgress;
 window.loadHistory = loadHistory;
 window.changeHole = changeHole;
 window.goToHole = goToHole;
+window.toggleFriendFavorite = toggleFriendFavorite;
 window.deleteCurrentRound = deleteCurrentRound;
 window.deleteRoundFromDetails = deleteRoundFromDetails;
 window.copyRoundToText = copyRoundToText;

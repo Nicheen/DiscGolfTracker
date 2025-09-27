@@ -561,6 +561,14 @@ input:focus, select:focus, textarea:focus {
     transform: scale(0.95);
 }
 
+.star-filled {
+    font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+}
+
+.star-outlined {
+    font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+}
+
 /* Ensure the badge doesn't trigger parent click events */
 .location-badge-button:hover {
     background-color: #dcfce7 !important;
