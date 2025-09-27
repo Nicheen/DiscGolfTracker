@@ -364,7 +364,11 @@ function displayCourses() {
         courseCard.className = cardClasses;
         courseCard.style.position = 'relative';
         courseCard.style.overflow = 'hidden';
-
+        courseCard.ondblclick = (e) => {
+            e.stopPropagation();
+            selectCourse(course.id, courseCard);
+            startRound();
+        }
         // Store course ID on the element for rain restoration
         courseCard.dataset.courseId = course.id;
 
