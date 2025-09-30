@@ -166,7 +166,7 @@ function getWeatherMain(weathercode) {
 }
 
 async function cleanupOldWeatherData() {
-    const cutoffDate = new Date(Date.now() - 60 * 60 * 1000); // 1 hour old
+    const cutoffDate = new Date(Date.now() - 2 * 60 * 60 * 1000); // 2 hours
     
     try {
         const { error } = await supabase
@@ -185,8 +185,6 @@ async function cleanupOldWeatherData() {
         
         if (error) {
             console.error('Error cleaning up old weather data:', error);
-        } else {
-            console.log('Cleaned up weather data older than 1 hour');
         }
     } catch (error) {
         console.error('Error cleaning up weather data:', error);
@@ -197,13 +195,27 @@ async function loadWeatherForAllCourses() {
     addRainAnimationStyles();
     
     try {
-        // First load any cached weather data
-        await loadCachedWeatherData();
-        
         // Clean up old data
         await cleanupOldWeatherData();
+
+        // First load any cached weather data
+        await loadWeatherFromDatabase();
+
+        // Track which locations we've already fetched to avoid duplicates
+        const fetchedLocations = new Set();
+        const locationRadius = 100; // meters for duplicate detection
+
+         // Helper to check if we've already fetched this location
+        const isLocationFetched = (lat, lon) => {
+            for (const location of fetchedLocations) {
+                if (isWithinRadius(lat, lon, location.lat, location.lon, locationRadius)) {
+                    return true;
+                }
+            }
+            return false;
+        };
         
-        // Process courses in batches to avoid rate limiting
+        // Process courses in batches
         const batchSize = 5;
         for (let i = 0; i < coursesData.length; i += batchSize) {
             const batch = coursesData.slice(i, i + batchSize);
@@ -211,10 +223,20 @@ async function loadWeatherForAllCourses() {
             await Promise.all(batch.map(async (course, batchIndex) => {
                 const globalIndex = i + batchIndex;
                 if (course.coordinates) {
+                    const [lat, lon] = course.coordinates.split(',').map(Number);
+                    
+                    // Skip if we already fetched this location
+                    if (isLocationFetched(lat, lon)) {
+                        // Use the existing weather data (already loaded from DB)
+                        return;
+                    }
+                    
                     const weather = await getWeatherForCourse(course);
+                    coursesData[globalIndex].weather = weather;
+                    
+                    // Mark this location as fetched
                     if (weather) {
-                        coursesData[globalIndex].weather = weather;
-                        console.log(`Weather loaded for ${course.name}: isRaining=${weather.isRaining}`);
+                        fetchedLocations.add({ lat, lon });
                     }
                 }
             }));
@@ -541,39 +563,30 @@ async function getWeatherForCourse(course) {
     }
     
     try {
-        // Check if we have recent cached weather (reduce cache time to 5 minutes)
-        const COURSE_CACHE_DURATION = 5 * 60 * 1000; // 5 minutes instead of 30
-        
-        const { data: recentWeather, error: cacheError } = await supabase
-            .from('courses')
-            .select('last_weather_update, temperature, description, humidity, wind_speed, wind_direction, visibility, is_raining')
-            .eq('id', course.id)
-            .single();
-        
-        if (!cacheError && recentWeather && recentWeather.last_weather_update) {
-            const cacheAge = Date.now() - new Date(recentWeather.last_weather_update).getTime();
-            console.log(`Cached weather for ${course.name} is ${Math.round(cacheAge / 1000 / 60)}min old`);
-            
-            if (cacheAge < COURSE_CACHE_DURATION) {
-                console.log(`Using cached weather for ${course.name}`);
-                return {
-                    temperature: recentWeather.temperature,
-                    description: recentWeather.description,
-                    main: recentWeather.description,
-                    humidity: recentWeather.humidity,
-                    windSpeed: recentWeather.wind_speed,
-                    windDirection: recentWeather.wind_direction,
-                    visibility: recentWeather.visibility,
-                    isRaining: recentWeather.is_raining
-                };
-            } else {
-                await cleanupOldWeatherData();
-                console.log(`Cached weather for ${course.name} is stale (${Math.round(cacheAge / 1000 / 60)}min old)`);
+        // Check if weather was already loaded from database
+        if (course.weather && course.weather.timestamp) {
+            const age = Date.now() - course.weather.timestamp;
+            if (age < WEATHER_CONFIG.CACHE_DURATION) {
+                return course.weather;
             }
         }
         
-        // Fetch fresh weather if cache is stale or missing
-        console.log(`Fetching fresh weather from API for ${course.name}`);
+        // Check nearby weather cache (from database, already loaded)
+        const nearbyCache = coursesData.find(c => 
+            c.weather && 
+            c.id !== course.id && 
+            c.coordinates &&
+            isWithinRadius(lat, lon, ...c.coordinates.split(',').map(Number))
+        );
+        
+        if (nearbyCache && nearbyCache.weather) {
+            const age = Date.now() - (nearbyCache.weather.timestamp || 0);
+            if (age < WEATHER_CONFIG.CACHE_DURATION) {
+                return nearbyCache.weather;
+            }
+        }
+        
+        // Fetch fresh weather only if needed
         const apiWeatherData = await getWeatherWithFallback(lat, lon);
         
         const processedData = {
@@ -589,11 +602,12 @@ async function getWeatherForCourse(course) {
                 apiWeatherData.description.toLowerCase(), 
                 apiWeatherData.main.toLowerCase(),
                 apiWeatherData.precipitation || 0
-            )
+            ),
+            timestamp: Date.now()
         };
-
-        // Always update database with fresh data
-        const { error: updateError } = await supabase
+        
+        // Save to database (single operation, no redundant checks)
+        await supabase
             .from('courses')
             .update({
                 last_weather_update: new Date().toISOString(),
@@ -607,17 +621,10 @@ async function getWeatherForCourse(course) {
             })
             .eq('id', course.id);
         
-        if (updateError) {
-            console.error('Error updating weather in database:', updateError);
-        } else {
-            console.log(`Weather data saved to database for course ${course.id}`);
-        }
-        
-        console.log(`Weather loaded for ${course.name}: isRaining=${processedData.isRaining}`);
         return processedData;
         
     } catch (error) {
-        console.error('Error getting weather for course:', error);
+        console.error(`Error getting weather for ${course.name}:`, error.message);
         return null;
     }
 }
@@ -1222,37 +1229,40 @@ function getWeatherDescription(weathercode) {
 
 async function loadWeatherFromDatabase() {
     try {
+        const cutoffTime = new Date(Date.now() - WEATHER_CONFIG.CACHE_DURATION);
+        
         const { data: coursesWithWeather, error } = await supabase
             .from("courses")
-            .select("id, last_weather_update, temperature, description, humidity, wind_speed, wind_direction, visibility, is_raining");
+            .select("id, last_weather_update, temperature, description, humidity, wind_speed, wind_direction, visibility, is_raining")
+            .gte('last_weather_update', cutoffTime.toISOString());
         
         if (error) {
             console.error("Error loading weather from database:", error);
             return;
         }
 
+        let loadedCount = 0;
         coursesWithWeather.forEach(courseWeather => {
             const course = coursesData.find(c => c.id === courseWeather.id);
             if (course && courseWeather.last_weather_update) {
-                // Check if weather data is recent (less than 30 minutes old)
-                const weatherAge = Date.now() - new Date(courseWeather.last_weather_update).getTime();
-                console.log("This course is old:", weatherAge);
-                if (weatherAge < 5 * 60 * 1000) { // 30 minutes
-                    course.weather = {
-                        temperature: courseWeather.temperature,
-                        description: courseWeather.description,
-                        main: courseWeather.description, // Use description as main for consistency
-                        humidity: courseWeather.humidity,
-                        windSpeed: courseWeather.wind_speed,
-                        windDirection: courseWeather.wind_direction,
-                        visibility: courseWeather.visibility,
-                        isRaining: courseWeather.is_raining
-                    };
-                }
+                course.weather = {
+                    temperature: courseWeather.temperature,
+                    description: courseWeather.description,
+                    main: courseWeather.description,
+                    humidity: courseWeather.humidity,
+                    windSpeed: courseWeather.wind_speed,
+                    windDirection: courseWeather.wind_direction,
+                    visibility: courseWeather.visibility,
+                    isRaining: courseWeather.is_raining,
+                    timestamp: new Date(courseWeather.last_weather_update).getTime()
+                };
+                loadedCount++;
             }
         });
         
-        console.log(`Loaded weather from database for ${coursesWithWeather.filter(c => c.last_weather_update).length} courses`);
+        if (loadedCount > 0) {
+            console.log(`Loaded cached weather for ${loadedCount} courses`);
+        }
     } catch (error) {
         console.error('Error loading weather from database:', error);
     }
