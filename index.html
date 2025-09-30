@@ -20,14 +20,14 @@
 </head>
 <body>
     <!-- Login Screen -->
-    <div id="login-screen" class="login-container bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500" style="display: block;">
+    <div id="login-screen" class="login-screen" style="display: block;">
         <div class="login-card">
             <div class="login-header">
                 <h1>🥏 Disc Golf Tracker</h1>
             </div>
             
             <div class="login-content">
-                <h2 class="form-title">Login with</h2>
+                <h2 class="form-title" id="form-title">Login with</h2>
                 <div class="social-login">
                     <button class="social-button" onclick="signInWithGoogle()">
                         <img src="./images/google.svg" alt="Google" class="social-icon"/>
@@ -35,20 +35,20 @@
                     </button>
                 </div>
                 <p class="seperator"><span>or</span></p>
-                <form action="#" class="login-form">
+                <form action="#" class="login-form" onsubmit="event.preventDefault();">
                     <div class="input-wrapper">
-                        <input type="email" placeholder="Email address" class="input-field" required/>
+                        <input type="email" id="login-email" placeholder="Email address" class="input-field" required/>
                         <span class="material-symbols-rounded">mail</span>
                     </div>
                     <div class="input-wrapper">
-                        <input type="password" placeholder="Password" class="input-field" required/>
+                        <input type="password" id="login-password" placeholder="Password" class="input-field" required/>
                         <span class="material-symbols-rounded">lock</span>
-                        <span class="material-symbols-rounded eye-icon">visibility_off</span>
+                        <span class="material-symbols-rounded eye-icon" onclick="togglePasswordVisibility()" style="cursor: pointer;">visibility_off</span>
                     </div>
-                    
-                    <a href="#" class="forgot-pass-link">Forgot Password?</a>
-                    <button class="login-button" onclick="signIn()">Login</button>
-                    <p class="signup-text">Don't have an account? <a href="#">Signup now</a></p>
+
+                    <a href="#" class="forgot-pass-link" id="forgot-pass-link" onclick="showForgotPassword(); return false;">Forgot Password?</a>
+                    <button type="submit" class="login-button" id="auth-button" onclick="handleAuth()">Login</button>
+                    <p class="signup-text" id="auth-switch-text">Don't have an account? <a href="#" onclick="switchToSignup(); return false;">Signup now</a></p>
 
                 </form>
             </div>
@@ -160,9 +160,36 @@
             <!-- Progress Section -->
             <div id="progress" class="section hidden">
                 <div class="bg-white rounded-xl shadow-lg border border-gray-200 p-6">
-                    <h2 class="text-xl font-bold text-gray-800 mb-6 flex items-center gap-2">
-                        Your Progress
-                    </h2>
+                    <div class="flex items-center justify-between mb-6">
+                        <h2 class="text-xl font-bold text-gray-800">
+                            Your Progress
+                        </h2>
+                        <div class="relative">
+                            <button id="progress-filter-btn" onclick="toggleProgressFilter()" class="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-indigo-50 to-purple-50 hover:from-indigo-100 hover:to-purple-100 border border-indigo-200 rounded-lg text-sm font-medium text-gray-700 transition-all duration-200 shadow-sm hover:shadow-md">
+                                <span class="material-symbols-rounded text-lg">filter_list</span>
+                                <span id="filter-label">All Time</span>
+                                <span class="material-symbols-rounded text-lg">expand_more</span>
+                            </button>
+                            <div id="progress-filter-dropdown" class="hidden absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-50 overflow-hidden">
+                                <button onclick="setProgressFilter('week')" class="w-full text-left px-4 py-3 hover:bg-indigo-50 text-sm font-medium text-gray-700 transition-colors flex items-center justify-between">
+                                    <span>This Week</span>
+                                    <span class="material-symbols-rounded text-indigo-600 text-lg hidden" data-filter="week">check</span>
+                                </button>
+                                <button onclick="setProgressFilter('month')" class="w-full text-left px-4 py-3 hover:bg-indigo-50 text-sm font-medium text-gray-700 transition-colors flex items-center justify-between border-t border-gray-100">
+                                    <span>This Month</span>
+                                    <span class="material-symbols-rounded text-indigo-600 text-lg hidden" data-filter="month">check</span>
+                                </button>
+                                <button onclick="setProgressFilter('year')" class="w-full text-left px-4 py-3 hover:bg-indigo-50 text-sm font-medium text-gray-700 transition-colors flex items-center justify-between border-t border-gray-100">
+                                    <span>This Year</span>
+                                    <span class="material-symbols-rounded text-indigo-600 text-lg hidden" data-filter="year">check</span>
+                                </button>
+                                <button onclick="setProgressFilter('all')" class="w-full text-left px-4 py-3 hover:bg-indigo-50 text-sm font-medium text-gray-700 transition-colors flex items-center justify-between border-t border-gray-100">
+                                    <span>All Time</span>
+                                    <span class="material-symbols-rounded text-indigo-600 text-lg" data-filter="all">check</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                     
                     <!-- Main Stats Grid -->
                     <div class="progress-stats-grid">

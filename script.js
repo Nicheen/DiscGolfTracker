@@ -483,6 +483,24 @@ async function signUp() {
     const email = document.getElementById("login-email").value;
     const password = document.getElementById("login-password").value;
 
+    if (!email || !password) {
+        Swal.fire({
+            icon: "error",
+            title: "Missing Information",
+            text: "Please enter both email and password",
+        });
+        return;
+    }
+
+    if (password.length < 6) {
+        Swal.fire({
+            icon: "error",
+            title: "Password Too Short",
+            text: "Password must be at least 6 characters long",
+        });
+        return;
+    }
+
     const { data, error } = await supabase.auth.signUp({
         email,
         password
@@ -491,14 +509,17 @@ async function signUp() {
     if (error) {
         Swal.fire({
             icon: "error",
-            title: "Oops...",
+            title: "Signup Failed",
             text: error.message,
         });
     } else {
         Swal.fire({
-            title: "Successful",
-            text: 'Check your email to confirm your account!',
+            title: "Success!",
+            text: 'Account created! Check your email to confirm your account.',
             icon: "success"
+        }).then(() => {
+            // Switch back to login mode
+            switchToLogin();
         });
     }
 }
@@ -4116,6 +4137,74 @@ function toggleRoundItem(itemId) {
     }
 }
 
+// Current filter state
+let currentProgressFilter = 'all';
+
+function toggleProgressFilter() {
+    const dropdown = document.getElementById('progress-filter-dropdown');
+    dropdown.classList.toggle('hidden');
+}
+
+function setProgressFilter(filter) {
+    currentProgressFilter = filter;
+
+    // Update label
+    const labels = {
+        'week': 'This Week',
+        'month': 'This Month',
+        'year': 'This Year',
+        'all': 'All Time'
+    };
+    document.getElementById('filter-label').textContent = labels[filter];
+
+    // Update checkmarks
+    document.querySelectorAll('[data-filter]').forEach(el => {
+        el.classList.add('hidden');
+    });
+    document.querySelector(`[data-filter="${filter}"]`).classList.remove('hidden');
+
+    // Hide dropdown
+    document.getElementById('progress-filter-dropdown').classList.add('hidden');
+
+    // Refresh progress data
+    updateProgress();
+}
+
+// Close dropdown when clicking outside
+document.addEventListener('click', (e) => {
+    const dropdown = document.getElementById('progress-filter-dropdown');
+    const button = document.getElementById('progress-filter-btn');
+    if (dropdown && button && !dropdown.contains(e.target) && !button.contains(e.target)) {
+        dropdown.classList.add('hidden');
+    }
+});
+
+function filterRoundsByDate(rounds) {
+    if (currentProgressFilter === 'all') return rounds;
+
+    const now = new Date();
+    let startDate;
+
+    switch (currentProgressFilter) {
+        case 'week':
+            startDate = new Date(now);
+            startDate.setDate(now.getDate() - 7);
+            break;
+        case 'month':
+            startDate = new Date(now);
+            startDate.setMonth(now.getMonth() - 1);
+            break;
+        case 'year':
+            startDate = new Date(now);
+            startDate.setFullYear(now.getFullYear() - 1);
+            break;
+        default:
+            return rounds;
+    }
+
+    return rounds.filter(round => new Date(round.created_at) >= startDate);
+}
+
 async function updateProgress() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
@@ -4144,12 +4233,15 @@ async function updateProgress() {
         }
 
         // Filter rounds where user actually has a score AND played at least one hole
-        const yourRounds = rounds.filter(round => {
+        let yourRounds = rounds.filter(round => {
             if (round.final_scores && currentUsername && round.final_scores[currentUsername] != null && round.final_scores[currentUsername] > 0) {
                 return true;
             }
             return false;
         });
+
+        // Apply date filter
+        yourRounds = filterRoundsByDate(yourRounds);
         
         document.getElementById('total-rounds').textContent = yourRounds.length;
         
@@ -5553,55 +5645,54 @@ function updateCharacterCount(inputId, counterId, maxLength) {
 }
 
 function togglePasswordVisibility() {
-    const passwordInput = document.getElementById('login-password');
-    const toggleIcon = document.getElementById('password-toggle-icon');
-    
-    if (passwordInput.type === 'password') {
-        passwordInput.type = 'text';
-        // Hidden eye icon (eye with slash)
-        toggleIcon.innerHTML = `
-            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-            <circle cx="12" cy="12" r="3"></circle>
-        `;
-    } else {
-        passwordInput.type = 'password';
-        // Visible eye icon
-        toggleIcon.innerHTML = `
-            <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
-            <line x1="1" y1="1" x2="23" y2="23"></line>
-        `;
+    const passwordInput = document.querySelector('.input-wrapper input[type="password"], .input-wrapper input[type="text"]');
+    const toggleIcon = document.querySelector('.eye-icon');
+
+    if (passwordInput && toggleIcon) {
+        if (passwordInput.type === 'password') {
+            passwordInput.type = 'text';
+            toggleIcon.textContent = 'visibility';
+        } else {
+            passwordInput.type = 'password';
+            toggleIcon.textContent = 'visibility_off';
+        }
     }
 }
 
 // Auth mode switching
-function switchAuthMode(mode) {
-    const authTabs = document.querySelectorAll('.auth-tab');
-    const submitBtn = document.getElementById('auth-submit-btn');
-    const btnText = document.getElementById('auth-btn-text');
+let currentAuthMode = 'login'; // 'login' or 'signup'
+
+function switchToSignup() {
+    currentAuthMode = 'signup';
+    const formTitle = document.getElementById('form-title');
+    const authButton = document.getElementById('auth-button');
     const switchText = document.getElementById('auth-switch-text');
-    const forgotLink = document.getElementById('forgot-password-link');
-    const form = document.getElementById('auth-form');
-    
-    // Update tab appearance
-    authTabs.forEach(tab => {
-        tab.classList.remove('active');
-        if (tab.dataset.mode === mode) {
-            tab.classList.add('active');
-        }
-    });
-    
-    if (mode === 'signin') {
-        submitBtn.onclick = signIn;
-        btnText.textContent = 'Sign In';
-        switchText.innerHTML = 'Don\'t have an account? <button type="button" class="link-btn" onclick="switchAuthMode(\'signup\')">Sign up here</button>';
-        forgotLink.style.display = 'block';
-        form.classList.remove('auth-mode-signup');
+    const forgotLink = document.getElementById('forgot-pass-link');
+
+    formTitle.textContent = 'Sign Up';
+    authButton.textContent = 'Create Account';
+    switchText.innerHTML = 'Already have an account? <a href="#" onclick="switchToLogin(); return false;">Login</a>';
+    forgotLink.style.display = 'none';
+}
+
+function switchToLogin() {
+    currentAuthMode = 'login';
+    const formTitle = document.getElementById('form-title');
+    const authButton = document.getElementById('auth-button');
+    const switchText = document.getElementById('auth-switch-text');
+    const forgotLink = document.getElementById('forgot-pass-link');
+
+    formTitle.textContent = 'Login with';
+    authButton.textContent = 'Login';
+    switchText.innerHTML = 'Don\'t have an account? <a href="#" onclick="switchToSignup(); return false;">Signup now</a>';
+    forgotLink.style.display = 'block';
+}
+
+function handleAuth() {
+    if (currentAuthMode === 'signup') {
+        signUp();
     } else {
-        submitBtn.onclick = signUp;
-        btnText.textContent = 'Create Account';
-        switchText.innerHTML = 'Already have an account? <button type="button" class="link-btn" onclick="switchAuthMode(\'signin\')">Sign in here</button>';
-        forgotLink.style.display = 'none';
-        form.classList.add('auth-mode-signup');
+        signIn();
     }
 }
 
@@ -6119,7 +6210,9 @@ window.refreshLocationManually = refreshLocationManually;
 window.clearCacheData = clearCacheData;
 window.updateLocationStatus = updateLocationStatus;
 window.togglePasswordVisibility = togglePasswordVisibility;
-window.switchAuthMode = switchAuthMode;
+window.switchToSignup = switchToSignup;
+window.switchToLogin = switchToLogin;
+window.handleAuth = handleAuth;
 window.showForgotPassword = showForgotPassword;
 window.applyCrop = applyCrop;
 window.refreshLocationFromBadge = refreshLocationFromBadge;
@@ -6145,6 +6238,8 @@ window.addFriendToRound = addFriendToRound;
 window.showFriendDetails = showFriendDetails;
 window.loadFriends = loadFriends;
 window.toggleDateGroup = toggleDateGroup;
+window.toggleProgressFilter = toggleProgressFilter;
+window.setProgressFilter = setProgressFilter;
 window.toggleRoundItem = toggleRoundItem;
 window.loadRoundScorecard = loadRoundScorecard;
 window.toggleScoreDisplay = toggleScoreDisplay;
