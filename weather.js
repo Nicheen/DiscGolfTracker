@@ -442,8 +442,33 @@ async function loadWeather() {
             )
         };
         
+<<<<<<< Updated upstream
         weatherIcon.textContent = 'sun';
         weatherTemp.textContent = `${weather.temperature}°C`;
+=======
+        // Stop loading animation
+        if (weatherIcon) {
+            weatherIcon.style.animation = '';
+        }
+        
+        // Update UI with fresh data
+        const emoji = getWeatherEmoji(weather.main, weather.temperature);
+        
+        weatherIcon.textContent = emoji;
+        weatherTemp.textContent = `${weather.temperature}°C`;
+        //weatherDesc.textContent = weather.description.charAt(0).toUpperCase() + weather.description.slice(1);
+        
+        // Update widget styling based on weather
+        if (weather.isRaining) {
+            weatherWidget.className = 'flex items-center gap-2 bg-blue-100/80 backdrop-blur-sm px-3 py-2 rounded-lg border border-blue-200/50 shadow-sm cursor-pointer transition-all duration-200 hover:bg-blue-200/80';
+            weatherTemp.className = 'font-semibold text-blue-800';
+            //weatherDesc.className = 'text-xs text-blue-700';
+        } else {
+            weatherWidget.className = 'flex items-center gap-2 bg-white/80 backdrop-blur-sm px-3 py-2 rounded-lg border border-gray-200/50 shadow-sm cursor-pointer transition-all duration-200 hover:bg-gray-100/80';
+            weatherTemp.className = 'font-semibold text-gray-800';
+            //weatherDesc.className = 'text-xs text-gray-700';
+        }
+>>>>>>> Stashed changes
         
         // Enhanced tooltip with weather details
         const now = new Date();

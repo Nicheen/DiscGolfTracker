@@ -7,8 +7,11 @@
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="bottom-navigation-style.css">
     <link rel="stylesheet" href="login-page-style.css">
+<<<<<<< Updated upstream
     <link rel="stylesheet" href="page-profile-style.css">
     <link rel="stylesheet" href="main-header-style.css">
+=======
+>>>>>>> Stashed changes
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#4f46e5">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/croppie/2.6.5/croppie.min.css">
@@ -21,6 +24,7 @@
 </head>
 <body>
     <!-- Login Screen -->
+<<<<<<< Updated upstream
     <div class="login-screen">
         <!-- SIGN UP / LOGIN FORM -->
         <div class="login-container">
@@ -50,6 +54,56 @@
                 <p class="signup-text">Don't have an account? <a href="#">Signup now</a></p>
 
             </form>
+=======
+    <div id="login-screen" style="display: block;">
+        <div class="login-card">
+            <div class="login-header">
+                <h1>🥏 Disc Golf Tracker</h1>
+            </div>
+            
+            <div class="login-content">
+                <h2 id="auth-title">Welcome Back! Sign In with</h2>
+                <div class="social-login">
+                    <button class="social-button" onclick="signInWithGoogle()">
+                        <img src="./images/google.svg" alt="Google" class="social-icon"/>
+                        Google
+                    </button>
+                </div>
+                <p class="seperator"><span>or</span></p>
+                <!-- SIGN UP / LOGIN FORM -->
+                <form class="login-form">
+                    <div class="input-wrapper">
+                        <input type="email" id="login-email" placeholder="Email Address" required 
+                            class="input-field w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" />
+                        <span class="material-symbols-rounded">mail</span>
+                    </div>
+                    
+                    <div class="input-wrapper">
+                        <input type="password" id="login-password" placeholder="Password" required 
+                            class="input-field w-full pr-12 px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" />
+                        <span class="material-symbols-rounded">lock</span>
+                        <button type="button" onclick="togglePasswordVisibility()" 
+                                class="absolute top-1/2 right-2 transform -translate-y-1/2 flex items-center justify-center w-8 h-8 text-gray-400 hover:text-indigo-600 transition-colors duration-200 rounded">
+                            <span id="password-toggle-icon eye-icon" class="material-symbols-rounded w-5 h-5">visibility_off</span>
+                        </button>
+                    </div>
+                    
+                    <div class="auth-mode-container">
+                        <button class="btn btn-primary" type="button" id="auth-submit-btn" onclick="signIn()">
+                            <span id="auth-btn-text">Sign In</span>
+                        </button>
+                        
+                        <div id="forgot-password-link" class="forgot-password-link">
+                            <button type="button" class="link-btn" onclick="showForgotPassword()">Forgot your password?</button>
+                        </div>
+                        
+                        <div id="auth-switch-text" class="auth-switch-text">
+                            Don't have an account? <button type="button" class="link-btn" onclick="switchAuthMode('signup')">Sign up here</button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+>>>>>>> Stashed changes
         </div>
     </div>
 
@@ -74,10 +128,20 @@
             <!-- Center: Title -->
             <h1>Disc Golf Tracker</h1>
 
+<<<<<<< Updated upstream
             <!-- Right side: Weather -->
             <div class="weather-widget" onclick="loadWeather()">
                 <div class="weather-icon material-symbols-rounded">cloud</div>
                 <div class="weather-temperature">19°C</div>
+=======
+                <!-- Right side: Weather -->
+                <div id="weather-widget" class="flex items-center hidden gap-2 bg-white/20 backdrop-blur-sm px-2 py-1 rounded-lg border border-gray-300/30 shadow-sm cursor-pointer" onclick="loadWeather()" title="Click to refresh weather">
+                    <div id="weather-icon" class="text-base"></div>
+                    <div class="text-xs">
+                        <div id="weather-temp" class="font-semibold text-gray-800"></div>
+                    </div>
+                </div>
+>>>>>>> Stashed changes
             </div>
         </header>
 

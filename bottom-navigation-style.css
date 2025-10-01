@@ -11,6 +11,11 @@
     padding: 15px 6px 32px 6px;
 }
 
+/* Android specific padding */
+.android-device .bottom-navigation-bar {
+    padding: 15px 6px 20px 6px;
+}
+
 .bottom-navigation-bar .nav-btn {
     flex: 1;
     top: 0;

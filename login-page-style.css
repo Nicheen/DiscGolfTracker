@@ -1,3 +1,4 @@
+<<<<<<< Updated upstream
 /* Color Variables */
 :root {
     --english-violet: #594157;
@@ -13,6 +14,9 @@ body {
 
 .login-screen {
     background: var(--english-violet);
+=======
+.login-screen {
+>>>>>>> Stashed changes
     display: flex;
     align-items: center;
     justify-content: center;
@@ -29,7 +33,11 @@ body {
     margin: 0 auto;
     border-radius: 0.5rem;
     padding: 2rem 1.5rem;
+<<<<<<< Updated upstream
     background: #fff;
+=======
+    background: rgba(255, 255, 255, 0.95);
+>>>>>>> Stashed changes
     box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
 }
 
@@ -70,16 +78,27 @@ body {
     width: 23px;
 }
 
+<<<<<<< Updated upstream
 .login-container .seperator {
+=======
+.login-content .seperator {
+>>>>>>> Stashed changes
     margin: 1.5rem 0;
     text-align: center;
     position: relative;
 }
 
+<<<<<<< Updated upstream
 .login-container .seperator span {
     position: relative;
     z-index: 1;
     background: #fff;
+=======
+.login-content .seperator span {
+    position: relative;
+    z-index: 1;
+    background: #F9F8FF;
+>>>>>>> Stashed changes
     padding: 0 0.9rem;
     font-size: 1.06rem;
     font-weight: 500;
@@ -192,4 +211,8 @@ body {
 
 .login-container a:hover {
     text-decoration: underline;
+<<<<<<< Updated upstream
 }
+=======
+}
+>>>>>>> Stashed changes

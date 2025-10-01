@@ -1,6 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 import './weather.js';
+import './login_page.js';
 
 export const supabaseUrl = 'https://yklfurbhvgrsmnfupsey.supabase.co'
 export const supabaseKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlrbGZ1cmJodmdyc21uZnVwc2V5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTY1NjIyMjcsImV4cCI6MjA3MjEzODIyN30.eEeA4Dtnk48oAULw78DWQ4mDplqiDcxv46fiIlTLDsE"
@@ -390,11 +391,6 @@ function displayCourses() {
                         <span class="difficulty-badge px-2 py-0.5 rounded-full text-xs font-semibold ${difficulty.class} flex-shrink-0">
                             ${difficulty.text}
                         </span>
-                        ${course.distance !== null ? 
-                            `<span class="distance-badge px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-700 flex-shrink-0">
-                                📍 ${formatDistance(course.distance)}
-                            </span>` : ''
-                        }
                     </div>
                     <div class="flex items-center gap-3 text-xs text-gray-600">
                         <span class="flex items-center gap-1">
@@ -5376,27 +5372,28 @@ function togglePasswordVisibility() {
         passwordInput.type = 'text';
         // Hidden eye icon (eye with slash)
         toggleIcon.innerHTML = `
-            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-            <circle cx="12" cy="12" r="3"></circle>
+            visbility_off
         `;
     } else {
         passwordInput.type = 'password';
         // Visible eye icon
         toggleIcon.innerHTML = `
-            <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
-            <line x1="1" y1="1" x2="23" y2="23"></line>
+            visibility
         `;
     }
 }
 
 // Auth mode switching
 function switchAuthMode(mode) {
+    const title = document.getElementById("auth-title");
+    const authbutton = document.getElementsByClassName('social-login')[0];
+    const seperator = document.getElementsByClassName('seperator')[0];
     const authTabs = document.querySelectorAll('.auth-tab');
     const submitBtn = document.getElementById('auth-submit-btn');
     const btnText = document.getElementById('auth-btn-text');
     const switchText = document.getElementById('auth-switch-text');
     const forgotLink = document.getElementById('forgot-password-link');
-    const form = document.getElementById('auth-form');
+    const form = document.getElementsByClassName('login-form')[0];
     
     // Update tab appearance
     authTabs.forEach(tab => {
@@ -5407,13 +5404,19 @@ function switchAuthMode(mode) {
     });
     
     if (mode === 'signin') {
+        title.innerHTML = "Welcome Back! Sign In with"
         submitBtn.onclick = signIn;
         btnText.textContent = 'Sign In';
+        authbutton.style.display = 'block';
+        seperator.style.display = 'block';
         switchText.innerHTML = 'Don\'t have an account? <button type="button" class="link-btn" onclick="switchAuthMode(\'signup\')">Sign up here</button>';
         forgotLink.style.display = 'block';
         form.classList.remove('auth-mode-signup');
     } else {
+        title.innerHTML = 'Create an account!'
         submitBtn.onclick = signUp;
+        authbutton.style.display = 'none';
+        seperator.style.display = 'none';
         btnText.textContent = 'Create Account';
         switchText.innerHTML = 'Already have an account? <button type="button" class="link-btn" onclick="switchAuthMode(\'signin\')">Sign in here</button>';
         forgotLink.style.display = 'none';
@@ -6009,6 +6012,13 @@ window.addEventListener("DOMContentLoaded", async () => {
     // Check for password reset parameters in both search and hash
     const urlParams = new URLSearchParams(window.location.search);
     const hashParams = new URLSearchParams(window.location.hash.substring(1));
+
+    // Detect device type and add class to body
+    if (/Android/i.test(navigator.userAgent)) {
+        document.body.classList.add('android-device');
+    } else if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+        document.body.classList.add('ios-device');
+    }
     
     if (urlParams.get('type') === 'recovery' || hashParams.get('type') === 'recovery' || 
         urlParams.has('error') || hashParams.has('error') || hashParams.has('error_code')) {
