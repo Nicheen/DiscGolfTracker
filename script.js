@@ -546,6 +546,33 @@ async function signIn() {
     }
 }
 
+async function signInWithGoogle() {
+    try {
+        const { data, error } = await supabase.auth.signInWithOAuth({
+            provider: 'google',
+            options: {
+                redirectTo: `${window.location.origin}${window.location.pathname}`
+            }
+        });
+
+        if (error) {
+            Swal.fire({
+                icon: "error",
+                title: "Google Sign-In Failed",
+                text: error.message,
+            });
+        }
+        // Note: The redirect will happen automatically if successful
+        // The user will be redirected back and handled by the auth state change listener
+    } catch (error) {
+        Swal.fire({
+            icon: "error",
+            title: "Google Sign-In Error",
+            text: error.message || "An unexpected error occurred",
+        });
+    }
+}
+
 async function signOut() {
     const { error } = await supabase.auth.signOut();
     if (error) {
@@ -1993,7 +2020,8 @@ async function loadFriends() {
 
         const friendData = friendships.map(f => ({
             id: f.user_id === user.id ? f.friend_id : f.user_id,
-            is_favorite: f.is_favorite || false
+            // Only use is_favorite if current user is the one who set it (user_id matches)
+            is_favorite: f.user_id === user.id ? (f.is_favorite || false) : false
         }));
 
         // Get friend IDs
@@ -2266,11 +2294,12 @@ async function toggleFriendFavorite(friendId, friendUsername) {
     if (!user) return;
 
     try {
-        // Get current friendship
+        // Get current friendship - only where current user is the owner
         const { data: friendship, error: fetchError } = await supabase
             .from('friendships')
             .select('is_favorite')
-            .or(`and(user_id.eq.${user.id},friend_id.eq.${friendId}),and(user_id.eq.${friendId},friend_id.eq.${user.id})`)
+            .eq('user_id', user.id)
+            .eq('friend_id', friendId)
             .single();
 
         if (fetchError) {
@@ -2280,11 +2309,12 @@ async function toggleFriendFavorite(friendId, friendUsername) {
 
         const newFavoriteStatus = !friendship.is_favorite;
 
-        // Update friendship
+        // Update only the current user's friendship record (one-way favorite)
         const { error: updateError } = await supabase
             .from('friendships')
             .update({ is_favorite: newFavoriteStatus })
-            .or(`and(user_id.eq.${user.id},friend_id.eq.${friendId}),and(user_id.eq.${friendId},friend_id.eq.${user.id})`);
+            .eq('user_id', user.id)
+            .eq('friend_id', friendId);
 
         if (updateError) {
             throw updateError;
@@ -6226,6 +6256,7 @@ window.isLocationSignificantlyDifferent = isLocationSignificantlyDifferent;
 window.signOut = signOut;
 window.signUp = signUp;
 window.signIn = signIn;
+window.signInWithGoogle = signInWithGoogle;
 window.saveProfile = saveProfile;
 window.previewProfilePicture = previewProfilePicture
 window.searchUsers = searchUsers;
