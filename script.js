@@ -2,8 +2,8 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 import './weather.js';
 
-export const supabaseUrl = 'https://yklfurbhvgrsmnfupsey.supabase.co'
-export const supabaseKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlrbGZ1cmJodmdyc21uZnVwc2V5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTY1NjIyMjcsImV4cCI6MjA3MjEzODIyN30.eEeA4Dtnk48oAULw78DWQ4mDplqiDcxv46fiIlTLDsE"
+export const supabaseUrl = 'https://anwrwnqmxvjqhdggrrpe.supabase.co'
+export const supabaseKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFud3J3bnFteHZqcWhkZ2dycnBlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNzY3NjUsImV4cCI6MjA5MTg1Mjc2NX0.k3UOQTGw7QpanPXcvY-ZLjGlupKPCcYt3QwV1SX521s"
 export const supabase = createClient(supabaseUrl, supabaseKey, {
   auth: {
     persistSession: true,
