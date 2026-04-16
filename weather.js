@@ -1,5 +1,5 @@
 // Import supabase and coursesData from the main script
-import { supabase, coursesData, getUserLocationWithCache, displayCourses } from './script.js';
+import { supabase, coursesData, getUserLocationWithCache, displayCourses, setLatestWeatherSnapshot } from './script.js';
 
 const weatherCache = new Map();
 let weatherRefreshInterval = null;
@@ -473,6 +473,7 @@ async function loadWeather() {
                 apiWeatherData.precipitation || 0
             )
         };
+        setLatestWeatherSnapshot(weather);
         
         // Stop loading animation
         if (weatherIcon) {

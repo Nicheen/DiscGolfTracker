@@ -11,6 +11,23 @@ export const supabase = createClient(supabaseUrl, supabaseKey, {
   }
 });
 
+export let latestWeatherSnapshot = null;
+
+export function setLatestWeatherSnapshot(weather) {
+    if (!weather) {
+        latestWeatherSnapshot = null;
+        return;
+    }
+
+    latestWeatherSnapshot = {
+        temperature: typeof weather.temperature === 'number' ? weather.temperature : null,
+        weather: weather.description || weather.main || null,
+        main: weather.main || null,
+        description: weather.description || null,
+        isRaining: Boolean(weather.isRaining)
+    };
+}
+
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 const COURSES_CACHE_DURATION = 10 * 60 * 1000; // 10 minutes
 const LOCATION_UPDATE_INTERVAL = 5 * 60 * 1000; // 5 minutes
@@ -46,6 +63,8 @@ let loadingTimeout = null;
 let showScoreDifference = true; // Default to showing score difference (total-par)
 let saveTimeout;
 let searchTimeout;
+let latestOnlineInterval = null;
+let friendPresenceDebugMode = null;
 
 // Save user location to Supabase
 async function saveUserLocationToSupabase(latitude, longitude, accuracy = null) {
@@ -428,6 +447,344 @@ function restoreNewRoundState() {
     isNewRoundExpanded = true;
 }
 
+function getLocalDateKey(date = new Date()) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
+function parseRoundDateValue(dateValue, fallbackCreatedAt = null) {
+    if (dateValue instanceof Date && !Number.isNaN(dateValue.getTime())) {
+        return new Date(dateValue.getFullYear(), dateValue.getMonth(), dateValue.getDate());
+    }
+
+    if (typeof dateValue === 'string' && dateValue.trim()) {
+        const isoMatch = dateValue.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (isoMatch) {
+            const [, year, month, day] = isoMatch;
+            return new Date(Number(year), Number(month) - 1, Number(day));
+        }
+
+        const usMatch = dateValue.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+        if (usMatch) {
+            const [, month, day, year] = usMatch;
+            return new Date(Number(year), Number(month) - 1, Number(day));
+        }
+
+        const parsed = new Date(dateValue);
+        if (!Number.isNaN(parsed.getTime())) {
+            return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
+        }
+    }
+
+    if (fallbackCreatedAt) {
+        const fallback = new Date(fallbackCreatedAt);
+        if (!Number.isNaN(fallback.getTime())) {
+            return new Date(fallback.getFullYear(), fallback.getMonth(), fallback.getDate());
+        }
+    }
+
+    return null;
+}
+
+function getRoundDateMetadata(round) {
+    const dateObj = parseRoundDateValue(round?.date, round?.created_at);
+    return {
+        dateObj,
+        dateKey: dateObj ? getLocalDateKey(dateObj) : (round?.date || 'Unknown Date'),
+        year: dateObj ? String(dateObj.getFullYear()) : 'Unknown'
+    };
+}
+
+function formatRoundDateLabel(dateValue, fallbackCreatedAt = null) {
+    const dateObj = parseRoundDateValue(dateValue, fallbackCreatedAt);
+    if (!dateObj) return dateValue || 'Unknown Date';
+
+    return dateObj.toLocaleDateString('en-SE', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric'
+    });
+}
+
+function getRoundWeatherRecord(course = null) {
+    const weatherSource = latestWeatherSnapshot || course?.weather || null;
+    if (!weatherSource) {
+        return {
+            temperature: null,
+            weather: null
+        };
+    }
+
+    const hasTemperatureValue = weatherSource.temperature !== null &&
+        weatherSource.temperature !== undefined &&
+        weatherSource.temperature !== '';
+    const parsedTemperature = hasTemperatureValue ? Number(weatherSource.temperature) : null;
+
+    return {
+        temperature: Number.isFinite(parsedTemperature) ? parsedTemperature : null,
+        weather: weatherSource.description || weatherSource.weather || weatherSource.main || null
+    };
+}
+
+function createRoundWeatherBadge(round) {
+    const hasTemperatureValue = round.temperature !== null &&
+        round.temperature !== undefined &&
+        round.temperature !== '';
+    const parsedTemperature = hasTemperatureValue ? Number(round.temperature) : null;
+    const hasTemperature = Number.isFinite(parsedTemperature);
+    const weatherText = typeof round.weather === 'string' ? round.weather.trim() : '';
+
+    if (!hasTemperature && !weatherText) return '';
+
+    const weatherIcon = typeof window.getWeatherEmoji === 'function'
+        ? window.getWeatherEmoji(weatherText, hasTemperature ? parsedTemperature : null)
+        : '🌤️';
+    const temperatureText = hasTemperature ? `${parsedTemperature}°` : '';
+    const badgeText = [weatherIcon, temperatureText].filter(Boolean).join(' ');
+
+    return `
+        <div class="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
+            <span>${badgeText}</span>
+        </div>
+    `;
+}
+
+function getFriendNicknameValue(nickname) {
+    if (typeof nickname !== 'string') return null;
+    const trimmedNickname = nickname.trim();
+    return trimmedNickname ? trimmedNickname : null;
+}
+
+function getFriendDisplayName(friend) {
+    return getFriendNicknameValue(friend?.nickname) || friend?.username || 'Unknown';
+}
+
+function getRoundScoreForPlayer(round, userId, username) {
+    if (round.final_scores_by_id && userId && round.final_scores_by_id[userId] != null) {
+        return round.final_scores_by_id[userId];
+    }
+
+    if (round.final_scores && username && round.final_scores[username] != null) {
+        return round.final_scores[username];
+    }
+
+    return null;
+}
+
+function calculatePlayerSummary(rounds, userId, username) {
+    let totalRounds = 0;
+    let totalThrows = 0;
+    const scoresToPar = [];
+
+    rounds.forEach(round => {
+        const score = getRoundScoreForPlayer(round, userId, username);
+        if (typeof score !== 'number' || score <= 0) return;
+
+        const course = coursesData.find(c => c.id == round.course_id);
+        const par = course ? course.holes.reduce((a, b) => a + b, 0) : 0;
+        if (par <= 0) return;
+
+        totalRounds++;
+        totalThrows += score;
+        scoresToPar.push(score - par);
+    });
+
+    const avgToPar = scoresToPar.length > 0
+        ? scoresToPar.reduce((a, b) => a + b, 0) / scoresToPar.length
+        : null;
+    const bestToPar = scoresToPar.length > 0
+        ? Math.min(...scoresToPar)
+        : null;
+
+    return {
+        totalRounds,
+        totalThrows,
+        avgToPar,
+        bestToPar
+    };
+}
+
+function formatScoreToParDisplay(value) {
+    if (value === null || value === undefined || Number.isNaN(value)) return '-';
+    if (value === 0) return 'E';
+    return value > 0 ? `+${value}` : `${value}`;
+}
+
+function formatScoreToParAverageDisplay(value) {
+    if (value === null || value === undefined || Number.isNaN(value)) return '-';
+    const rounded = Number(value.toFixed(1));
+    if (rounded === 0) return 'E';
+    return rounded > 0 ? `+${rounded.toFixed(1)}` : rounded.toFixed(1);
+}
+
+function buildComparisonItems(friendStats, userStats) {
+    if (!userStats || userStats.totalRounds === 0) return [];
+
+    const items = [];
+
+    const roundDiff = friendStats.totalRounds - userStats.totalRounds;
+    if (roundDiff !== 0) {
+        items.push({
+            label: 'Rounds',
+            value: `${roundDiff > 0 ? '+' : ''}${roundDiff}`,
+            tone: roundDiff > 0 ? 'text-sky-700 bg-sky-50' : 'text-slate-700 bg-slate-100'
+        });
+    }
+
+    if (friendStats.avgToPar !== null && userStats.avgToPar !== null) {
+        const avgDiff = Number((friendStats.avgToPar - userStats.avgToPar).toFixed(1));
+        items.push({
+            label: 'Average',
+            value: avgDiff === 0 ? 'Same as you' : `${Math.abs(avgDiff).toFixed(1)} ${avgDiff < 0 ? 'better' : 'higher'}`,
+            tone: avgDiff < 0 ? 'text-green-700 bg-green-50' : avgDiff > 0 ? 'text-amber-700 bg-amber-50' : 'text-slate-700 bg-slate-100'
+        });
+    }
+
+    if (friendStats.bestToPar !== null && userStats.bestToPar !== null) {
+        const bestDiff = friendStats.bestToPar - userStats.bestToPar;
+        items.push({
+            label: 'Best',
+            value: bestDiff === 0 ? 'Same as you' : `${Math.abs(bestDiff)} ${bestDiff < 0 ? 'better' : 'higher'}`,
+            tone: bestDiff < 0 ? 'text-green-700 bg-green-50' : bestDiff > 0 ? 'text-amber-700 bg-amber-50' : 'text-slate-700 bg-slate-100'
+        });
+    }
+
+    return items;
+}
+
+function getFriendPresenceStatus(latestOnline) {
+    if (!latestOnline) return 'offline';
+
+    const latestOnlineDate = new Date(latestOnline);
+    if (Number.isNaN(latestOnlineDate.getTime())) return 'offline';
+
+    const minutesSinceOnline = (Date.now() - latestOnlineDate.getTime()) / (1000 * 60);
+
+    if (minutesSinceOnline <= 15) return 'online';
+    if (minutesSinceOnline <= 60) return 'recent';
+    return 'offline';
+}
+
+function getFriendAvatarPresenceClasses(latestOnline) {
+    switch (getFriendPresenceStatus(latestOnline)) {
+        case 'online':
+            return 'border-[3px] border-green-500';
+        case 'recent':
+            return 'border-[3px] border-amber-400';
+        default:
+            return 'border-2 border-indigo-200';
+    }
+}
+
+function getFriendPresenceLabel(latestOnline) {
+    switch (getFriendPresenceStatus(latestOnline)) {
+        case 'online':
+            return 'Online in the last 15 minutes';
+        case 'recent':
+            return 'Online in the last hour';
+        default:
+            return 'Offline';
+    }
+}
+
+function formatFriendLastOnline(latestOnline) {
+    if (!latestOnline) return 'Offline';
+
+    const latestOnlineDate = new Date(latestOnline);
+    if (Number.isNaN(latestOnlineDate.getTime())) return 'Offline';
+
+    const minutesSinceOnline = Math.max(0, Math.round((Date.now() - latestOnlineDate.getTime()) / (1000 * 60)));
+
+    if (minutesSinceOnline <= 2) return 'Online now';
+    if (minutesSinceOnline < 60) return `${minutesSinceOnline}m ago`;
+
+    const hoursSinceOnline = Math.round(minutesSinceOnline / 60);
+    if (hoursSinceOnline < 24) return `${hoursSinceOnline}h ago`;
+
+    const daysSinceOnline = Math.round(hoursSinceOnline / 24);
+    if (daysSinceOnline < 7) return `${daysSinceOnline}d ago`;
+
+    return formatRoundDateLabel(latestOnlineDate);
+}
+
+function getFriendPresenceDebugTimestamp(mode) {
+    const now = Date.now();
+
+    switch (mode) {
+        case 'online':
+            return new Date(now - 5 * 60 * 1000).toISOString();
+        case 'recent':
+            return new Date(now - 35 * 60 * 1000).toISOString();
+        case 'offline':
+            return new Date(now - 2 * 60 * 60 * 1000).toISOString();
+        default:
+            return null;
+    }
+}
+
+function applyFriendPresenceDebugState(friend, index) {
+    if (index !== 0 || !friendPresenceDebugMode) return friend;
+
+    return {
+        ...friend,
+        latest_online: getFriendPresenceDebugTimestamp(friendPresenceDebugMode)
+    };
+}
+
+async function updateLatestOnline() {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    try {
+        const { error } = await supabase
+            .from('profiles')
+            .update({ latest_online: new Date().toISOString() })
+            .eq('id', user.id);
+
+        if (error) {
+            console.error('Error updating latest_online:', error);
+        }
+    } catch (error) {
+        console.error('Error updating latest_online:', error);
+    }
+}
+
+function startLatestOnlineHeartbeat() {
+    stopLatestOnlineHeartbeat();
+    updateLatestOnline();
+    latestOnlineInterval = setInterval(() => {
+        if (document.visibilityState === 'visible') {
+            updateLatestOnline();
+        }
+    }, 5 * 60 * 1000);
+}
+
+function stopLatestOnlineHeartbeat() {
+    if (latestOnlineInterval) {
+        clearInterval(latestOnlineInterval);
+        latestOnlineInterval = null;
+    }
+}
+
+function setFriendPresenceDebugMode(mode) {
+    friendPresenceDebugMode = mode;
+
+    const labels = {
+        online: 'top friend set to green/online',
+        recent: 'top friend set to yellow/recent',
+        offline: 'top friend set to offline'
+    };
+
+    console.log(`Friend presence debug: ${labels[mode] || 'cleared to real latest_online data'}`);
+
+    const friendsSection = document.getElementById('friends');
+    if (friendsSection && !friendsSection.classList.contains('hidden')) {
+        loadFriends();
+    }
+}
+
 async function signUp() {
     const email = document.getElementById("login-email").value;
     const password = document.getElementById("login-password").value;
@@ -542,6 +899,7 @@ async function signOut() {
             showConfirmButton: false
         });
         stopLocationUpdates();
+        stopLatestOnlineHeartbeat();
         stopWeatherAutoRefresh(); // ADD THIS LINE
         signOutSuccessful();
     }
@@ -1944,7 +2302,7 @@ async function loadFriends() {
         // First get friendships
         const { data: friendships, error: friendshipError } = await supabase
             .from('friendships')
-            .select('friend_id, user_id, is_favorite')
+            .select('friend_id, user_id, is_favorite, nickname')
             .or(`user_id.eq.${user.id},friend_id.eq.${user.id}`)
             .eq('status', 'accepted');
 
@@ -1966,7 +2324,8 @@ async function loadFriends() {
         const friendData = friendships.map(f => ({
             id: f.user_id === user.id ? f.friend_id : f.user_id,
             // Only use is_favorite if current user is the one who set it (user_id matches)
-            is_favorite: f.user_id === user.id ? (f.is_favorite || false) : false
+            is_favorite: f.user_id === user.id ? (f.is_favorite || false) : false,
+            nickname: f.user_id === user.id ? getFriendNicknameValue(f.nickname) : null
         }));
 
         // Get friend IDs
@@ -1975,7 +2334,7 @@ async function loadFriends() {
         // Get friend profiles in one query
         const { data: friendProfiles, error: profileError } = await supabase
             .from('profiles')
-            .select('id, username, bio, profile_picture_base64')
+            .select('id, username, bio, profile_picture_base64, latest_online')
             .in('id', friendIds);
 
         if (profileError) {
@@ -1997,80 +2356,77 @@ async function loadFriends() {
         
         // After getting friendProfiles, sort by favorite status
         friendProfiles.sort((a, b) => {
-            const aFavorite = friendData.find(fd => fd.id === a.id)?.is_favorite || false;
-            const bFavorite = friendData.find(fd => fd.id === b.id)?.is_favorite || false;
+            const aFriendData = friendData.find(fd => fd.id === a.id);
+            const bFriendData = friendData.find(fd => fd.id === b.id);
+            const aFavorite = aFriendData?.is_favorite || false;
+            const bFavorite = bFriendData?.is_favorite || false;
+            const aDisplayName = getFriendNicknameValue(aFriendData?.nickname) || a.username;
+            const bDisplayName = getFriendNicknameValue(bFriendData?.nickname) || b.username;
             
             // Favorites first
             if (aFavorite && !bFavorite) return -1;
             if (!aFavorite && bFavorite) return 1;
             
-            // Then alphabetically by username
-            return a.username.localeCompare(b.username);
+            // Then alphabetically by visible display name
+            return aDisplayName.localeCompare(bDisplayName);
         });
 
         // Display each friend with their stats
-        friendProfiles.forEach(friend => {
+        friendProfiles.forEach((friendProfile, index) => {
+            const friend = applyFriendPresenceDebugState(friendProfile, index);
             // Calculate stats from their rounds - now each friend should have their own round entries
             const friendRounds = allFriendRounds?.filter(r => r.user_id === friend.id) || [];
-            
-            // Get scores from final_scores using friend's username
-            const scores = friendRounds
-                .map(round => {
-                    // Try multiple ways to get the score
-                    if (round.final_scores && friend.username && round.final_scores[friend.username] != null) {
-                        return round.final_scores[friend.username];
-                    }
-                    // Fallback: check if there's a score by user ID
-                    if (round.final_scores_by_id && round.final_scores_by_id[friend.id] != null) {
-                        return round.final_scores_by_id[friend.id];
-                    }
-                    return null;
-                })
-                .filter(score => score != null);
-            
-            const totalRounds = scores.length;
-            const avgScore = totalRounds > 0 ? (scores.reduce((a, b) => a + b, 0) / totalRounds).toFixed(1) : '-';
-            const bestScore = totalRounds > 0 ? Math.min(...scores) : '-';
+            const friendStats = calculatePlayerSummary(friendRounds, friend.id, friend.username);
+            const totalRounds = friendStats.totalRounds;
 
             // Get favorite status
             const friendDataItem = friendData.find(fd => fd.id === friend.id);
             const isFavorite = friendDataItem?.is_favorite || false;
+            const nickname = getFriendNicknameValue(friendDataItem?.nickname);
+            const displayName = nickname || friend.username;
+            const escapedUsername = friend.username.replace(/'/g, "\\'");
+            const escapedDisplayName = displayName.replace(/'/g, "\\'");
+            const avatarPresenceClasses = getFriendAvatarPresenceClasses(friend.latest_online);
+            const presenceLabel = getFriendPresenceLabel(friend.latest_online);
+            const lastOnlineText = formatFriendLastOnline(friend.latest_online);
             friend.is_favorite = isFavorite; // Add to friend object for showFriendDetails
+            friend.nickname = nickname;
+            friend.display_name = displayName;
 
             const card = document.createElement('div');
             const profilePicSrc = friend.profile_picture_base64 || "./images/user.png";
             card.className = 'friend-card-new bg-white rounded-xl p-4 shadow-md hover:shadow-lg transition-all duration-200 cursor-pointer border border-gray-100 hover:border-indigo-200';
-            card.onclick = () => showFriendDetails(friend, { totalRounds, avgScore, bestScore });
+            card.onclick = () => showFriendDetails(friend);
 
             card.innerHTML = `
                 <div class="flex items-center justify-between">
                     <div class="flex items-center space-x-3">
                         <img src="${profilePicSrc}" alt="${friend.username}" 
-                            class="w-12 h-12 rounded-full border-2 border-indigo-200 object-cover flex-shrink-0">
+                            title="${presenceLabel}"
+                            class="w-12 h-12 rounded-full ${avatarPresenceClasses} object-cover flex-shrink-0">
                         <div class="min-w-0 flex-1">
                             <div class="flex items-center gap-1">
-                                <h4 class="font-semibold text-gray-900 text-sm truncate">${friend.username}</h4>
-                                <button onclick="event.stopPropagation(); toggleFriendFavorite('${friend.id}', '${friend.username}')"
-                                        class="hover:scale-125 transition-transform duration-200 flex-shrink-0 bg-transparent border-none cursor-pointer p-0">
-                                    <span class="material-symbols-rounded ${isFavorite ? 'star-filled' : 'star-outlined'}" id="friend-list-star-${friend.id}">
+                                <h4 class="font-semibold text-gray-900 text-sm truncate">${displayName}</h4>
+                                ${nickname ? `<span class="text-[11px] font-medium text-gray-400 truncate">@${friend.username}</span>` : ''}
+                                <button onclick="event.stopPropagation(); toggleFriendFavorite('${friend.id}', '${escapedUsername}')"
+                                        class="inline-flex h-5 w-5 items-center justify-center hover:scale-125 transition-transform duration-200 flex-shrink-0 bg-transparent border-none cursor-pointer p-0">
+                                    <span class="material-symbols-rounded text-[18px] leading-none ${isFavorite ? 'star-filled' : 'star-outlined'}" id="friend-list-star-${friend.id}">
                                         star
                                     </span>
                                 </button>
                             </div>
                             <p class="text-xs text-gray-500 truncate">${friend.bio || 'No bio set'}</p>
-                            <div class="flex items-center space-x-3 mt-1 text-xs text-gray-600">
+                            <div class="flex items-center gap-1.5 mt-1 text-xs text-gray-600">
                                 <span>${totalRounds} rounds</span>
+                                <span class="text-gray-300">|</span>
+                                <span>${lastOnlineText}</span>
                             </div>
                         </div>
                     </div>
-                    <div class="flex flex-col space-y-1 flex-shrink-0">
-                        <button onclick="event.stopPropagation(); addFriendToRound('${friend.username}')" 
-                            class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs px-3 py-1.5 rounded-md transition-colors duration-200 font-medium">
+                    <div class="flex items-center pl-3 flex-shrink-0">
+                        <button onclick="event.stopPropagation(); addFriendToRound('${friend.id}', '${escapedUsername}', '${escapedDisplayName}')" 
+                            class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs px-4 py-2 rounded-md transition-colors duration-200 font-medium shadow-sm">
                             Invite
-                        </button>
-                        <button onclick="event.stopPropagation(); removeFriend('${friend.id}', '${friend.username}')" 
-                            class="bg-red-500 hover:bg-red-600 text-white text-xs px-3 py-1.5 rounded-md transition-colors duration-200 font-medium">
-                            Remove
                         </button>
                     </div>
                 </div>
@@ -2086,60 +2442,60 @@ async function loadFriends() {
 }
 
 // Add this new function to script.js
-async function showFriendDetails(friend, stats) {
+async function showFriendDetails(friend) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
     try {
-        // Get detailed round history for this friend
-        const { data: friendRounds, error } = await supabase
-            .from('rounds')
-            .select('*')
-            .eq('user_id', friend.id)
-            .eq('status', 'completed')
-            .order('created_at', { ascending: false })
-            .limit(10);
+        const displayName = getFriendDisplayName(friend);
+        const escapedUsername = friend.username.replace(/'/g, "\\'");
+        const escapedDisplayName = displayName.replace(/'/g, "\\'");
+        const escapedNickname = (friend.nickname || '').replace(/'/g, "\\'");
 
-        if (error) {
-            console.error('Error loading friend details:', error);
+        const [
+            { data: friendRounds, error: friendRoundsError },
+            { data: currentUserRounds, error: currentUserRoundsError },
+            { data: currentUserProfile, error: currentUserProfileError }
+        ] = await Promise.all([
+            supabase
+                .from('rounds')
+                .select('*')
+                .eq('user_id', friend.id)
+                .eq('status', 'completed')
+                .order('created_at', { ascending: false })
+                .limit(10),
+            supabase
+                .from('rounds')
+                .select('*')
+                .eq('user_id', user.id)
+                .eq('status', 'completed'),
+            supabase
+                .from('profiles')
+                .select('username')
+                .eq('id', user.id)
+                .single()
+        ]);
+
+        if (friendRoundsError) {
+            console.error('Error loading friend details:', friendRoundsError);
+        }
+        if (currentUserRoundsError) {
+            console.error('Error loading current user rounds for comparison:', currentUserRoundsError);
+        }
+        if (currentUserProfileError) {
+            console.error('Error loading current user profile for comparison:', currentUserProfileError);
         }
 
         const rounds = friendRounds || [];
+        const currentUsername = currentUserProfile?.username || null;
+        const friendStats = calculatePlayerSummary(rounds, friend.id, friend.username);
+        const currentUserStats = calculatePlayerSummary(currentUserRounds || [], user.id, currentUsername);
+        const comparisonItems = buildComparisonItems(friendStats, currentUserStats);
 
-        // Calculate detailed stats like in updateProgress
-        let totalRounds = 0;
-        let totalThrows = 0;
-        let scoresToPar = [];
-        let validRounds = [];
-
-        rounds.forEach(round => {
-            if (round.final_scores && friend.username && round.final_scores[friend.username] != null) {
-                const score = round.final_scores[friend.username];
-                
-                // Find course to get par
-                const course = coursesData.find(c => c.id == round.course_id);
-                const par = course ? course.holes.reduce((a, b) => a + b, 0) : 0;
-                
-                if (par > 0 && score > 0) {
-                    totalRounds++;
-                    totalThrows += score;
-                    scoresToPar.push(score - par);
-                    validRounds.push({ score, par, scoreToPar: score - par });
-                }
-            }
-        });
-
-        // Calculate stats
-        const avgScore = scoresToPar.length > 0 ? 
-            (scoresToPar.reduce((a, b) => a + b, 0) / scoresToPar.length).toFixed(1) : '-';
-        const bestScore = validRounds.length > 0 ? 
-            Math.min(...scoresToPar) : '-';
-
-        // Format displays
-        const avgScoreDisplay = avgScore === '-' ? '-' : 
-            (avgScore == 0 ? 'E' : (avgScore > 0 ? `+${avgScore}` : avgScore));
-        const bestScoreDisplay = bestScore === '-' ? '-' : 
-            (bestScore == 0 ? 'E' : (bestScore > 0 ? `+${bestScore}` : bestScore));
+        const totalRounds = friendStats.totalRounds;
+        const totalThrows = friendStats.totalThrows;
+        const avgScoreDisplay = formatScoreToParAverageDisplay(friendStats.avgToPar);
+        const bestScoreDisplay = formatScoreToParDisplay(friendStats.bestToPar);
 
         const recentRounds = rounds.slice(0, 3);
 
@@ -2160,7 +2516,7 @@ async function showFriendDetails(friend, stats) {
                                 <div class="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
                                     <div>
                                         <div class="font-medium text-sm">${round.course_name}</div>
-                                        <div class="text-xs text-gray-500">${round.date}</div>
+                                        <div class="text-xs text-gray-500">${formatRoundDateLabel(round.date, round.created_at)}</div>
                                     </div>
                                     <div class="text-right">
                                         <div class="font-semibold text-sm">${score}</div>
@@ -2175,6 +2531,8 @@ async function showFriendDetails(friend, stats) {
         }
 
         const profilePicSrc = friend.profile_picture_base64 || "./images/user.png";
+        const avatarPresenceClasses = getFriendAvatarPresenceClasses(friend.latest_online);
+        const presenceLabel = getFriendPresenceLabel(friend.latest_online);
         
         Swal.fire({
             title: '',
@@ -2182,41 +2540,69 @@ async function showFriendDetails(friend, stats) {
                 <div class="text-left">
                     <div class="flex items-center space-x-4 mb-6">
                         <img src="${profilePicSrc}" alt="${friend.username}" 
-                            class="w-16 h-16 rounded-full border-3 border-indigo-200 object-cover">
+                            title="${presenceLabel}"
+                            class="w-16 h-16 rounded-full ${avatarPresenceClasses} object-cover">
                         <div>
-                            <div class="flex items-center gap-2">
-                                <h3 class="text-xl font-bold text-gray-900">${friend.username}</h3>
-                                <button onclick="event.stopPropagation(); toggleFriendFavorite('${friend.id}', '${friend.username}')"
-                                        class="hover:scale-125 transition-transform duration-200 bg-transparent border-none cursor-pointer p-0">
-                                    <span class="material-symbols-rounded ${friend.is_favorite ? 'star-filled' : 'star-outlined'}" id="favorite-star-${friend.id}">
+                            <div class="flex items-center gap-1.5">
+                                <h3 class="text-xl font-bold text-gray-900" id="friend-display-name-${friend.id}">${displayName}</h3>
+                                <button onclick="event.stopPropagation(); openFriendNicknameEditor('${friend.id}', '${escapedUsername}', '${escapedNickname}')"
+                                        class="inline-flex h-5 w-5 items-center justify-center flex-shrink-0 bg-transparent border-none cursor-pointer p-0 text-gray-400 hover:text-gray-600 transition-colors duration-200"
+                                        title="Edit nickname">
+                                    <span class="material-symbols-rounded text-[17px] leading-none">edit</span>
+                                </button>
+                                <button onclick="event.stopPropagation(); toggleFriendFavorite('${friend.id}', '${escapedUsername}')"
+                                        class="inline-flex h-5 w-5 items-center justify-center hover:scale-125 transition-transform duration-200 bg-transparent border-none cursor-pointer p-0">
+                                    <span class="material-symbols-rounded text-[18px] leading-none ${friend.is_favorite ? 'star-filled' : 'star-outlined'}" id="favorite-star-${friend.id}">
                                         star
                                     </span>
                                 </button>
                             </div>
+                            <p class="text-xs font-medium text-gray-400" id="friend-username-handle-${friend.id}">@${friend.username}</p>
                             <p class="text-gray-600 text-sm">${friend.bio || 'No bio set'}</p>
                         </div>
                     </div>
-                    
-                    <div class="grid grid-cols-4 gap-3 mb-6">
-                        <div class="text-center p-3 rounded-lg" style="background:rgba(23,184,144,0.1)">
-                            <div class="text-[10px] font-bold" style="color:#17b890">${totalRounds}</div>
-                            <div class="text-[10px] text-gray-600 leading-tight">Total<br>Rounds</div>
+
+                    <div class="grid grid-cols-2 gap-3 mb-4">
+                        <div class="rounded-xl p-4 text-center shadow-sm" style="background:linear-gradient(135deg, rgba(23,184,144,0.12), rgba(94,128,127,0.08))">
+                            <div class="text-2xl font-bold leading-none" style="color:#17b890">${totalRounds}</div>
+                            <div class="mt-2 text-xs font-semibold uppercase tracking-wide text-gray-600">Total Rounds</div>
                         </div>
-                        <div class="text-center p-3 rounded-lg" style="background:rgba(157,197,187,0.2)">
-                            <div class="text-[10px] font-bold" style="color:#5e807f">${totalThrows.toLocaleString()}</div>
-                            <div class="text-[10px] text-gray-600 leading-tight">Total<br>Throws</div>
+                        <div class="rounded-xl p-4 text-center shadow-sm" style="background:linear-gradient(135deg, rgba(157,197,187,0.22), rgba(94,128,127,0.12))">
+                            <div class="text-2xl font-bold leading-none" style="color:#5e807f">${totalThrows.toLocaleString()}</div>
+                            <div class="mt-2 text-xs font-semibold uppercase tracking-wide text-gray-600">Total Throws</div>
                         </div>
-                        <div class="text-center p-3 bg-green-50 rounded-lg">
-                            <div class="text-[10px] font-bold text-green-600">${avgScoreDisplay}</div>
-                            <div class="text-[10px] text-gray-600 leading-tight">Average<br>Score</div>
+                        <div class="rounded-xl p-4 text-center bg-green-50 shadow-sm">
+                            <div class="text-2xl font-bold leading-none text-green-600">${avgScoreDisplay}</div>
+                            <div class="mt-2 text-xs font-semibold uppercase tracking-wide text-gray-600">Average Score</div>
                         </div>
-                        <div class="text-center p-3 rounded-lg" style="background:rgba(8,45,15,0.08)">
-                            <div class="text-[10px] font-bold" style="color:#082d0f">${bestScoreDisplay}</div>
-                            <div class="text-[10px] text-gray-600 leading-tight">Best<br>Round</div>
+                        <div class="rounded-xl p-4 text-center shadow-sm" style="background:linear-gradient(135deg, rgba(8,45,15,0.08), rgba(94,128,127,0.12))">
+                            <div class="text-2xl font-bold leading-none" style="color:#082d0f">${bestScoreDisplay}</div>
+                            <div class="mt-2 text-xs font-semibold uppercase tracking-wide text-gray-600">Best Round</div>
                         </div>
                     </div>
+
+                    ${comparisonItems.length > 0 ? `
+                        <div class="mb-6 rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
+                            <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">Compared To You</div>
+                            <div class="mt-3 flex flex-wrap gap-2">
+                                ${comparisonItems.map(item => `
+                                    <div class="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold ${item.tone}">
+                                        <span>${item.label}</span>
+                                        <span>${item.value}</span>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    ` : ''}
                                         
                     ${recentRoundsHTML}
+
+                    <div class="mt-6 pt-4 border-t border-gray-100">
+                        <button onclick="removeFriend('${friend.id}', '${escapedUsername}', '${escapedDisplayName}')"
+                                class="w-full rounded-lg bg-red-50 px-4 py-3 text-sm font-semibold text-red-600 transition-colors duration-200 hover:bg-red-100">
+                            Remove Friend
+                        </button>
+                    </div>
                 </div>
             `,
             showConfirmButton: false,
@@ -2293,14 +2679,79 @@ async function toggleFriendFavorite(friendId, friendUsername) {
     }
 }
 
+async function saveFriendNickname(friendId, friendUsername, nicknameInputValue = '') {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const nickname = getFriendNicknameValue(nicknameInputValue);
+
+    try {
+        const { error } = await supabase
+            .from('friendships')
+            .update({
+                nickname,
+                updated_at: new Date()
+            })
+            .eq('user_id', user.id)
+            .eq('friend_id', friendId);
+
+        if (error) {
+            throw error;
+        }
+
+        await Swal.fire({
+            title: nickname ? 'Nickname Saved' : 'Nickname Cleared',
+            text: nickname ? `${friendUsername} will now show as ${nickname}.` : `${friendUsername} will now use the real username again.`,
+            icon: 'success',
+            timer: 1600,
+            showConfirmButton: false
+        });
+        loadFriends();
+    } catch (error) {
+        console.error('Error saving nickname:', error);
+        Swal.fire({
+            icon: 'error',
+            title: 'Error',
+            text: 'Could not save nickname.'
+        });
+    }
+}
+
+async function openFriendNicknameEditor(friendId, friendUsername, currentNickname = '') {
+    const result = await Swal.fire({
+        title: `Nickname for ${friendUsername}`,
+        input: 'text',
+        inputValue: currentNickname,
+        inputPlaceholder: 'Set a nickname',
+        inputAttributes: {
+            maxlength: 20,
+            autocapitalize: 'off'
+        },
+        showCancelButton: true,
+        confirmButtonText: 'Save',
+        cancelButtonText: 'Cancel',
+        footer: 'Leave it empty to use the real username again.',
+        inputValidator: (value) => {
+            if (value && value.trim().length > 20) {
+                return 'Nickname must be 20 characters or less.';
+            }
+            return null;
+        }
+    });
+
+    if (!result.isConfirmed) return;
+
+    await saveFriendNickname(friendId, friendUsername, result.value || '');
+}
+
 // Remove a friend
-async function removeFriend(friendId, friendUsername) {
+async function removeFriend(friendId, friendUsername, friendDisplayName = friendUsername) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
     const result = await Swal.fire({
         title: 'Remove Friend?',
-        text: `Are you sure you want to remove ${friendUsername} from your friends list?`,
+        text: `Are you sure you want to remove ${friendDisplayName} from your friends list?`,
         icon: 'warning',
         showCancelButton: true,
         confirmButtonColor: '#dc3545',
@@ -2324,7 +2775,7 @@ async function removeFriend(friendId, friendUsername) {
             } else {
                 Swal.fire({
                     title: "Friend Removed",
-                    text: `${friendUsername} has been removed from your friends list.`,
+                    text: `${friendDisplayName} has been removed from your friends list.`,
                     icon: "success"
                 });
                 loadFriends(); // Reload the friends list
@@ -2341,7 +2792,11 @@ async function removeFriend(friendId, friendUsername) {
 }
 
 // Add friend to current round players
-async function addFriendToRound(friendUsername) {
+async function addFriendToRound(friendIdOrUsername, friendUsernameArg = null, friendDisplayNameArg = null) {
+    const friendId = friendUsernameArg ? friendIdOrUsername : null;
+    const friendUsername = friendUsernameArg || friendIdOrUsername;
+    const friendDisplayName = friendDisplayNameArg || friendUsername;
+
     // Clean the username and check if it's a guest
     const cleanUsername = friendUsername.trim();
     
@@ -2368,41 +2823,46 @@ async function addFriendToRound(friendUsername) {
         Swal.fire({
             icon: "info",
             title: "Already Added",
-            text: `${friendUsername} is already in the players list.`,
+            text: `${friendDisplayName} is already in the players list.`,
         });
         return;
     }
     
     try {
         // Get the friend's user ID from their username
-        const { data: friendProfile, error: profileError } = await supabase
+        let profileQuery = supabase
             .from('profiles')
-            .select('id, username')
-            .eq('username', friendUsername)
-            .single();
+            .select('id, username');
+
+        profileQuery = friendId
+            ? profileQuery.eq('id', friendId)
+            : profileQuery.eq('username', friendUsername);
+
+        const { data: friendProfile, error: profileError } = await profileQuery.single();
 
         if (profileError || !friendProfile) {
             Swal.fire({
                 icon: "error",
                 title: "Friend Not Found",
-                text: `Could not find user ${friendUsername}. They may have changed their username.`,
+                text: `Could not find user ${friendDisplayName}. They may have changed their username.`,
             });
             return;
         }
 
         const friendUserId = friendProfile.id;
+        const actualUsername = friendProfile.username;
         
         // Add the new player to the current round
         currentRound.playerIds.push(friendUserId);
-        currentRound.playerIdToUsername[friendUserId] = friendUsername;
-        currentRound.usernameToPlayerId[friendUsername] = friendUserId;
+        currentRound.playerIdToUsername[friendUserId] = actualUsername;
+        currentRound.usernameToPlayerId[actualUsername] = friendUserId;
         
         // Initialize scores for the new player
         const course = coursesData.find(c => c.id == currentRound.courseId);
         if (course) {
             const newPlayerScores = new Array(course.holes.length).fill(0);
             currentRound.scores[friendUserId] = newPlayerScores;
-            console.log(`Initialized scores for ${friendUsername} (${friendUserId}):`, newPlayerScores);
+            console.log(`Initialized scores for ${actualUsername} (${friendUserId}):`, newPlayerScores);
         }
         
         // Save the updated round to Supabase immediately
@@ -2430,7 +2890,7 @@ async function addFriendToRound(friendUsername) {
                 currentRound.playerIds.splice(playerIndex, 1);
                 delete currentRound.scores[friendUserId];
                 delete currentRound.playerIdToUsername[friendUserId];
-                delete currentRound.usernameToPlayerId[friendUsername];
+                delete currentRound.usernameToPlayerId[actualUsername];
             }
             return;
         }
@@ -2445,7 +2905,7 @@ async function addFriendToRound(friendUsername) {
         
         Swal.fire({
             title: "Friend Added to Round!",
-            text: `${friendUsername} has been added to the players list and saved.`,
+            text: `${friendDisplayName} has been added to the players list and saved.`,
             icon: "success",
             timer: 2000,
             showConfirmButton: false
@@ -2633,18 +3093,24 @@ function showCanvasConfetti() {
 
     const confetti = [];
     const colors = ['#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', '#ffd93d', '#ff8a80', '#c7ecee'];
+    const spawnBandHeight = Math.max(90, canvas.height * 0.16);
+    const spawnInset = Math.max(24, canvas.width * 0.06);
 
     // Create confetti particles
-    for (let i = 0; i < 100; i++) {
+    for (let i = 0; i < 140; i++) {
         confetti.push({
-            x: Math.random() * canvas.width,
-            y: -10,
-            vx: (Math.random() - 0.5) * 4,
-            vy: Math.random() * 3 + 2,
+            x: spawnInset + Math.random() * (canvas.width - spawnInset * 2),
+            y: -spawnBandHeight + Math.random() * spawnBandHeight,
+            vx: (Math.random() - 0.5) * 2.6,
+            vy: Math.random() * 1.4 + 1.2,
             color: colors[Math.floor(Math.random() * colors.length)],
             size: Math.random() * 8 + 4,
             rotation: Math.random() * 360,
-            rotationSpeed: (Math.random() - 0.5) * 10
+            rotationSpeed: (Math.random() - 0.5) * 7,
+            sway: Math.random() * Math.PI * 2,
+            swaySpeed: 0.015 + Math.random() * 0.025,
+            swayAmount: 0.35 + Math.random() * 0.9,
+            drag: 0.994 + Math.random() * 0.003
         });
     }
 
@@ -2655,12 +3121,15 @@ function showCanvasConfetti() {
             const particle = confetti[i];
             
             // Update position
+            particle.sway += particle.swaySpeed;
+            particle.vx *= particle.drag;
+            particle.x += Math.sin(particle.sway) * particle.swayAmount;
             particle.x += particle.vx;
             particle.y += particle.vy;
             particle.rotation += particle.rotationSpeed;
             
             // Add gravity
-            particle.vy += 0.1;
+            particle.vy += 0.035;
 
             // Draw particle
             ctx.save();
@@ -2733,6 +3202,18 @@ function showSection(sectionId) {
     if (sectionId === 'friends') loadFriends();
 }
 
+function updateRoundNavButton() {
+    const roundNavButton = document.querySelector('.bottom-navigation-bar .plus-btn');
+    const roundNavIcon = document.getElementById('round-nav-icon');
+
+    if (!roundNavButton || !roundNavIcon) return;
+
+    const hasActiveRound = !!currentRound;
+
+    roundNavButton.title = hasActiveRound ? 'Current game' : 'New round';
+    roundNavIcon.textContent = hasActiveRound ? 'sports_score' : 'add_2';
+}
+
 async function startRound() {
     const courseId = document.getElementById('course').value;
     
@@ -2795,7 +3276,7 @@ async function startRound() {
                 player_usernames: playerIdToUsername,
                 guest_players: guestPlayers,
                 scores: initialScores,
-                date: new Date().toLocaleDateString(),
+                date: getLocalDateKey(),
                 status: 'in_progress'
             })
             .select()
@@ -2824,7 +3305,7 @@ async function startRound() {
             playerIdToUsername: playerIdToUsername,
             usernameToPlayerId: usernameToPlayerId,
             scores: initialScores,
-            date: new Date().toLocaleDateString()
+            date: getLocalDateKey()
         };
 
         console.log('Current round registered players:', playerIds);
@@ -2835,6 +3316,7 @@ async function startRound() {
         document.getElementById('scorecard').style.display = 'block';
         document.getElementById('start-round-bar')?.classList.add('hidden');
         document.getElementById('course-selector-panel')?.classList.add('hidden');
+        updateRoundNavButton();
 
         // Auto-collapse the new round section to save space
         autoCollapseNewRound();
@@ -3216,9 +3698,10 @@ async function deleteCurrentRound() {
             // Clear current round and hide scorecard
             currentRound = null;
             document.getElementById('scorecard').style.display = 'none';
-        document.getElementById('start-round-bar')?.classList.remove('hidden');
-        document.getElementById('course-selector-panel')?.classList.remove('hidden');
+            document.getElementById('start-round-bar')?.classList.remove('hidden');
+            document.getElementById('course-selector-panel')?.classList.remove('hidden');
             document.getElementById('course').value = '';
+            updateRoundNavButton();
 
             // Always expand new round section after deleting - ADDED
             if (!isNewRoundExpanded) {
@@ -3620,6 +4103,7 @@ async function finishRound() {
 
         // Calculate final scores - include both registered users and guests
         const finalScoresByUsername = {};
+        const roundWeather = getRoundWeatherRecord(course);
 
         Object.keys(currentRound.scores).forEach(playerId => {
             const scores = currentRound.scores[playerId];
@@ -3653,6 +4137,8 @@ async function finishRound() {
                 guest_players: currentRound.guestPlayers || [],
                 players: Object.values(currentRound.playerIdToUsername),
                 scores: currentRound.scores,
+                temperature: roundWeather.temperature,
+                weather: roundWeather.weather,
                 updated_at: new Date()
             })
             .eq('id', currentRound.id);
@@ -3677,6 +4163,8 @@ async function finishRound() {
                 guest_players: currentRound.guestPlayers || [],
                 scores: currentRound.scores,
                 final_scores: finalScoresByUsername,
+                temperature: roundWeather.temperature,
+                weather: roundWeather.weather,
                 date: currentRound.date,
                 status: 'completed',
                 created_at: new Date(),
@@ -3706,6 +4194,7 @@ async function finishRound() {
 
         // Clear current round
         currentRound = null;
+        updateRoundNavButton();
 
         // Show success message
         Swal.fire({
@@ -3786,13 +4275,25 @@ async function loadHistory() {
         // Group rounds by year → date
         const roundsByYear = {};
         rounds.forEach(round => {
-            const year = round.date.substring(0, 4);
+            const { year, dateKey, dateObj } = getRoundDateMetadata(round);
             if (!roundsByYear[year]) roundsByYear[year] = {};
-            if (!roundsByYear[year][round.date]) roundsByYear[year][round.date] = [];
-            roundsByYear[year][round.date].push(round);
+            if (!roundsByYear[year][dateKey]) {
+                roundsByYear[year][dateKey] = {
+                    rounds: [],
+                    dateObj
+                };
+            }
+            roundsByYear[year][dateKey].rounds.push(round);
+            if (!roundsByYear[year][dateKey].dateObj && dateObj) {
+                roundsByYear[year][dateKey].dateObj = dateObj;
+            }
         });
 
-        const sortedYears = Object.keys(roundsByYear).sort((a, b) => b - a);
+        const sortedYears = Object.keys(roundsByYear).sort((a, b) => {
+            if (a === 'Unknown') return 1;
+            if (b === 'Unknown') return -1;
+            return Number(b) - Number(a);
+        });
         const today = new Date();
         const yesterday = new Date(today);
         yesterday.setDate(yesterday.getDate() - 1);
@@ -3806,10 +4307,14 @@ async function loadHistory() {
             yearBanner.innerHTML = `<span>${year}</span>`;
             container.appendChild(yearBanner);
 
-            const datesInYear = Object.keys(roundsByYear[year]).sort((a, b) => new Date(b) - new Date(a));
+            const datesInYear = Object.entries(roundsByYear[year]).sort(([, a], [, b]) => {
+                const aTime = a.dateObj ? a.dateObj.getTime() : 0;
+                const bTime = b.dateObj ? b.dateObj.getTime() : 0;
+                return bTime - aTime;
+            });
 
-            datesInYear.forEach(date => {
-                const roundsForDate = roundsByYear[year][date];
+            datesInYear.forEach(([dateKey, dateGroupData]) => {
+                const roundsForDate = dateGroupData.rounds;
                 const dateIndex = globalDateIndex++;
                 const isLatestDate = dateIndex === 0;
 
@@ -3834,16 +4339,19 @@ async function loadHistory() {
                     : '-';
 
                 // Format date label
-                const dateObj = new Date(date + 'T00:00:00');
+                const dateObj = dateGroupData.dateObj;
                 let displayDate, subLabel;
-                if (dateObj.toDateString() === today.toDateString()) {
+                if (dateObj && dateObj.toDateString() === today.toDateString()) {
                     displayDate = 'Today';
                     subLabel = dateObj.toLocaleDateString('en-SE', { month: 'short', day: 'numeric' });
-                } else if (dateObj.toDateString() === yesterday.toDateString()) {
+                } else if (dateObj && dateObj.toDateString() === yesterday.toDateString()) {
                     displayDate = 'Yesterday';
                     subLabel = dateObj.toLocaleDateString('en-SE', { month: 'short', day: 'numeric' });
-                } else {
+                } else if (dateObj) {
                     displayDate = dateObj.toLocaleDateString('en-SE', { month: 'short', day: 'numeric' });
+                    subLabel = '';
+                } else {
+                    displayDate = dateKey;
                     subLabel = '';
                 }
 
@@ -4002,7 +4510,10 @@ function createRoundItem(round, itemId, currentUsername, userId) {
         <div class="p-6" onclick="toggleRoundItem('${itemId}')">
             <div class="flex justify-between items-start mb-4">
                 <div>
-                    <h3 class="text-xl font-bold text-gray-900 mb-1">${round.course_name}</h3> 
+                    <div class="flex items-center gap-2 mb-1 flex-wrap">
+                        <h3 class="text-xl font-bold text-gray-900">${round.course_name}</h3>
+                        ${createRoundWeatherBadge(round)}
+                    </div>
                 </div>
                 <div class="text-right">
                     ${showScoreDifference ? 
@@ -4785,7 +5296,7 @@ async function loadCurrentRound() {
                     playerIdToUsername: playerIdToUsername,
                     usernameToPlayerId: usernameToPlayerId,
                     scores: inProgressRound.scores,
-                    date: inProgressRound.date
+                    date: getRoundDateMetadata(inProgressRound).dateKey
                 };
 
                 // Update the players input field
@@ -4796,6 +5307,7 @@ async function loadCurrentRound() {
                 document.getElementById('scorecard').style.display = 'block';
                 document.getElementById('start-round-bar')?.classList.add('hidden');
                 document.getElementById('course-selector-panel')?.classList.add('hidden');
+                updateRoundNavButton();
 
                 // Restore scores to the UI
                 Object.keys(currentRound.scores).forEach(playerId => {
@@ -4824,9 +5336,10 @@ async function loadCurrentRound() {
             }
         } else {
             document.getElementById('scorecard').style.display = 'none';
-        document.getElementById('start-round-bar')?.classList.remove('hidden');
-        document.getElementById('course-selector-panel')?.classList.remove('hidden');
+            document.getElementById('start-round-bar')?.classList.remove('hidden');
+            document.getElementById('course-selector-panel')?.classList.remove('hidden');
             currentRound = null;
+            updateRoundNavButton();
         }
     } catch (error) {
         console.error('Error loading current round:', error);
@@ -4916,7 +5429,7 @@ async function copyRoundToText(roundId) {
             return;
         }
 
-        let roundText = `${round.course_name} - ${round.date}\n\n`;
+        let roundText = `${round.course_name} - ${formatRoundDateLabel(round.date, round.created_at)}\n\n`;
 
         // Determine which format to use and build the text
         const useNewFormat = round.player_ids && round.player_usernames && round.scores;
@@ -5031,6 +5544,7 @@ async function deleteRound(roundId) {
 async function loginSuccessful() {
     // Add this to your loginSuccessful function or early in the app
     addRainAnimationStyles();
+    startLatestOnlineHeartbeat();
     document.getElementById('login-screen').style.display = 'none';
     document.getElementById('main-app').style.display = 'block';
     
@@ -5715,6 +6229,7 @@ function resetAppState() {
         weatherWidget.classList.add('hidden');
         weatherWidget.classList.remove('flex');
     }
+    latestWeatherSnapshot = null;
     
     // Reset profile picture
     document.getElementById('user-avatar').src = './images/user.png';
@@ -5737,6 +6252,7 @@ function resetAppState() {
     
     // Reset global variables
     currentRound = null;
+    updateRoundNavButton();
     coursesData = [];
     profilePictureCache = {};
     coursesCacheTime = null;
@@ -6306,7 +6822,7 @@ async function showCourseLeaderboard(courseId, courseName) {
             const medal = medals[i] || `${i + 1}.`;
             const borderColor = medalBorderColors[i] || '#dee5e5';
             const dateStr = entry.date
-                ? new Date(entry.date + 'T00:00:00').toLocaleDateString('en-SE', { month: 'short', day: 'numeric', year: 'numeric' })
+                ? formatRoundDateLabel(entry.date)
                 : '';
 
             return `
@@ -6458,6 +6974,8 @@ window.sendFriendRequest = sendFriendRequest;
 window.diagnoseLocationIssues = diagnoseLocationIssues;
 window.runLocationDiagnostics = runLocationDiagnostics;
 window.removeFriend = removeFriend;
+window.saveFriendNickname = saveFriendNickname;
+window.openFriendNicknameEditor = openFriendNicknameEditor;
 window.addFriendToRound = addFriendToRound;
 window.showFriendDetails = showFriendDetails;
 window.loadFriends = loadFriends;
@@ -6602,6 +7120,12 @@ window.addEventListener("scroll", () => {
     header.style.opacity = currentHeaderOpacity / 0.95; // Normalize to 0-1 range
 });
 
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+        updateLatestOnline();
+    }
+});
+
 let adminMode = false;
 
 // Enter Admin Mode
@@ -6628,6 +7152,20 @@ document.addEventListener('keydown', function(event) {
     }
 });
 
+document.addEventListener('keydown', function(event) {
+    if (!adminMode) return;
+
+    if (event.key === '1') {
+        setFriendPresenceDebugMode('online');
+    } else if (event.key === '2') {
+        setFriendPresenceDebugMode('recent');
+    } else if (event.key === '3') {
+        setFriendPresenceDebugMode('offline');
+    } else if (event.key === '0') {
+        setFriendPresenceDebugMode(null);
+    }
+});
+
 document.querySelectorAll('.bottom-navigation-bar .nav-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     // remove active from all buttons
@@ -6637,3 +7175,5 @@ document.querySelectorAll('.bottom-navigation-bar .nav-btn').forEach(btn => {
     btn.classList.add('active');
   });
 });
+
+updateRoundNavButton();
