@@ -1,3 +1,39 @@
+:root {
+    --alabaster-grey: #dee5e5;
+    --muted-teal: #9dc5bb;
+    --mint-leaf: #17b890;
+    --deep-teal: #5e807f;
+    --evergreen: #082d0f;
+}
+
+/* ===== Tailwind indigo/purple overrides ===== */
+.from-indigo-500 { --tw-gradient-from: var(--evergreen) !important; --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to, rgba(8,45,15,0)) !important; }
+.via-purple-500 { --tw-gradient-stops: var(--tw-gradient-from), var(--deep-teal), var(--tw-gradient-to, rgba(94,128,127,0)) !important; }
+.to-pink-500 { --tw-gradient-to: var(--mint-leaf) !important; }
+.from-indigo-600 { --tw-gradient-from: var(--mint-leaf) !important; --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to, rgba(23,184,144,0)) !important; }
+.to-purple-600 { --tw-gradient-to: var(--deep-teal) !important; }
+.from-indigo-50 { --tw-gradient-from: rgba(23,184,144,0.05) !important; --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to, rgba(23,184,144,0)) !important; }
+.to-purple-50 { --tw-gradient-to: rgba(94,128,127,0.05) !important; }
+.bg-indigo-600 { background-color: var(--mint-leaf) !important; }
+.bg-indigo-50 { background-color: rgba(23,184,144,0.08) !important; }
+.bg-indigo-100 { background-color: rgba(23,184,144,0.12) !important; }
+.bg-purple-50 { background-color: rgba(94,128,127,0.08) !important; }
+.text-indigo-600 { color: var(--mint-leaf) !important; }
+.text-indigo-700 { color: var(--deep-teal) !important; }
+.text-indigo-200 { color: var(--muted-teal) !important; }
+.text-purple-600 { color: var(--deep-teal) !important; }
+.border-indigo-200 { border-color: var(--muted-teal) !important; }
+.border-indigo-600 { border-color: var(--mint-leaf) !important; }
+.hover\:bg-indigo-200:hover { background-color: rgba(23,184,144,0.2) !important; }
+.hover\:bg-indigo-700:hover { background-color: var(--deep-teal) !important; }
+.hover\:border-indigo-200:hover { border-color: var(--muted-teal) !important; }
+.hover\:border-indigo-400:hover { border-color: var(--mint-leaf) !important; }
+.hover\:from-indigo-100:hover { --tw-gradient-from: rgba(23,184,144,0.12) !important; --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to, rgba(23,184,144,0)) !important; }
+.hover\:to-purple-100:hover { --tw-gradient-to: rgba(94,128,127,0.12) !important; }
+.focus\:ring-indigo-500:focus { --tw-ring-color: rgba(23,184,144,0.3) !important; }
+.focus\:border-indigo-500:focus { border-color: var(--mint-leaf) !important; }
+/* ============================================ */
+
 * {
     margin: 0;
     padding: 0;
@@ -6,7 +42,7 @@
 
 body {
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, var(--evergreen) 0%, var(--mint-leaf) 100%);
     min-height: 100vh;
     padding: 10px;
 }
@@ -79,7 +115,7 @@ body {
 }
 
 #new-round-content {
-    max-height: 1000px;
+    max-height: 6000px;
     transition: all 0.3s ease-in-out;
 }
 
@@ -96,8 +132,8 @@ body {
 }
 
 .course-card.selected-course {
-    background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
-    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2);
+    background: linear-gradient(135deg, #e8f7f3 0%, #d0ede8 100%);
+    box-shadow: 0 4px 12px rgba(23, 184, 144, 0.2);
 }
 
 .difficulty-badge {
@@ -126,7 +162,7 @@ body {
 }
 
 .login-header h1 {
-    background: linear-gradient(45deg, #667eea, #764ba2);
+    background: linear-gradient(45deg, #17b890, #5e807f);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     margin-bottom: 10px;
@@ -135,7 +171,7 @@ body {
 }
 
 .gradient-text {
-    background: linear-gradient(45deg, #667eea, #764ba2);
+    background: linear-gradient(45deg, #17b890, #5e807f);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
@@ -231,13 +267,13 @@ body {
     width: 40px;
     height: 40px;
     border-radius: 50%;
-    border: 2px solid #667eea;
+    border: 2px solid #17b890;
     cursor: pointer;
     transition: all 0.3s ease;
 }
 
 .user-avatar:hover {
-    border-color: #764ba2;
+    border-color: #5e807f;
     transform: scale(1.05);
 }
 
@@ -263,7 +299,7 @@ body {
     width: 40px;
     height: 40px;
     border-radius: 50%;
-    border: 2px solid #667eea;
+    border: 2px solid #17b890;
     flex-shrink: 0;
 }
 
@@ -340,8 +376,8 @@ input, select, textarea {
 
 input:focus, select:focus, textarea:focus {
     outline: none;
-    border-color: #667eea;
-    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    border-color: #17b890;
+    box-shadow: 0 0 0 3px rgba(23, 184, 144, 0.1);
 }
 
 #login-password {
@@ -349,7 +385,7 @@ input:focus, select:focus, textarea:focus {
 }
 
 .btn {
-    background: linear-gradient(135deg, #667eea, #764ba2);
+    background: linear-gradient(135deg, #17b890, #5e807f);
     color: white;
     border: none;
     padding: 12px 20px;
@@ -368,7 +404,7 @@ input:focus, select:focus, textarea:focus {
 
 .btn:hover {
     transform: translateY(-2px);
-    box-shadow: 0 10px 25px rgba(102, 126, 234, 0.3);
+    box-shadow: 0 10px 25px rgba(23, 184, 144, 0.3);
 }
 
 .btn-secondary {
@@ -394,7 +430,7 @@ input:focus, select:focus, textarea:focus {
 .hole-number {
     font-weight: bold;
     text-align: center;
-    background: linear-gradient(135deg, #667eea, #764ba2);
+    background: linear-gradient(135deg, #17b890, #5e807f);
     color: white;
     border-radius: 8px;
     padding: 8px 4px;
@@ -417,7 +453,7 @@ input:focus, select:focus, textarea:focus {
     border-radius: 10px;
     padding: 15px;
     margin-bottom: 15px;
-    border-left: 5px solid #667eea;
+    border-left: 5px solid #17b890;
     box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
     word-wrap: break-word;
     overflow-wrap: break-word;
@@ -431,12 +467,12 @@ input:focus, select:focus, textarea:focus {
 }
 
 .stat-card {
-    background: linear-gradient(135deg, #667eea, #764ba2);
+    background: linear-gradient(135deg, #17b890, #5e807f);
     color: white;
     padding: 20px 15px;
     border-radius: 15px;
     text-align: center;
-    box-shadow: 0 10px 25px rgba(102, 126, 234, 0.3);
+    box-shadow: 0 10px 25px rgba(23, 184, 144, 0.3);
 }
 
 .stat-number {
@@ -476,7 +512,7 @@ input:focus, select:focus, textarea:focus {
 
 .friend-card:hover {
     transform: translateY(-5px);
-    border-color: #667eea;
+    border-color: #17b890;
 }
 
 .friend-card h4 {
@@ -563,15 +599,59 @@ input:focus, select:focus, textarea:focus {
 
 .star-filled {
     font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+    color: #f59e0b;
+    filter: drop-shadow(0 0 4px rgba(245, 158, 11, 0.5));
+    transition: all 0.2s ease;
 }
 
 .star-outlined {
-    font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+    font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24;
+    color: #d1d5db;
+    transition: all 0.2s ease;
+}
+
+.star-outlined:hover {
+    color: #f59e0b;
+    filter: drop-shadow(0 0 3px rgba(245, 158, 11, 0.3));
 }
 
 /* Ensure the badge doesn't trigger parent click events */
 .location-badge-button:hover {
     background-color: #dcfce7 !important;
+}
+
+/* Year banner in history */
+.history-year-banner {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 4px;
+    margin-top: 8px;
+}
+
+.history-year-banner:first-child {
+    margin-top: 0;
+}
+
+.history-year-banner span {
+    font-size: 13px;
+    font-weight: 700;
+    color: #5e807f;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.history-year-banner::before,
+.history-year-banner::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(to right, transparent, #9dc5bb);
+}
+
+.history-year-banner::after {
+    background: linear-gradient(to left, transparent, #9dc5bb);
 }
 
 /* Prevent text selection on interactive elements */
@@ -600,7 +680,7 @@ html, body {
 }
 
 .password-toggle-btn:hover {
-    color: #667eea;
+    color: #17b890;
 }
 
 .auth-mode-container {
@@ -630,7 +710,7 @@ html, body {
 
 .auth-tab.active {
     background: white;
-    color: #667eea;
+    color: #17b890;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
@@ -653,7 +733,7 @@ html, body {
 .link-btn {
     background: none;
     border: none;
-    color: #667eea;
+    color: #17b890;
     cursor: pointer;
     font-size: inherit;
     text-decoration: underline;
@@ -662,7 +742,7 @@ html, body {
 }
 
 .link-btn:hover {
-    color: #764ba2;
+    color: #5e807f;
 }
 
 /* Hide forgot password link during signup */
@@ -710,11 +790,11 @@ html, body {
 }
 
 input:checked + .slider {
-  background-color: #2196F3;
+  background-color: #17b890;
 }
 
 input:focus + .slider {
-  box-shadow: 0 0 1px #2196F3;
+  box-shadow: 0 0 1px #17b890;
 }
 
 input:checked + .slider:before {
@@ -742,9 +822,9 @@ input:checked + .slider:before {
 }
 
 .course-card.selected-course {
-    background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
-    border-color: #3b82f6 !important;
-    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.25);
+    background: linear-gradient(135deg, #e8f7f3 0%, #d0ede8 100%);
+    border-color: #17b890 !important;
+    box-shadow: 0 2px 8px rgba(23, 184, 144, 0.25);
 }
 
 /* Compact badges */

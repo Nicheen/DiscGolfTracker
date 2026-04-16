@@ -37,6 +37,7 @@ let profilePictureCache = {};
 let coursesCacheTime = null;
 let openDateGroup = 0; // Only latest date open by default
 let expandedRoundItems = new Set();
+let courseChampions = {}; // userId → number of course records held
 
 // Add loading state management
 let isAppLoading = true;
@@ -223,50 +224,13 @@ async function updateUserLocation() {
 }
 
 function toggleNewRoundSection(event) {
-    // Only proceed if the click wasn't on a button or interactive element
-    if (event && event.target && false) {
-        // Don't toggle if clicking on buttons, links, or interactive elements
-        if (event.target.tagName === 'BUTTON' || 
-            event.target.tagName === 'A' || 
-            event.target.closest('button') || 
-            event.target.closest('a') ||
-            event.target.onclick) {
-            return;
-        }
-    }
-    
-    const content = document.getElementById('new-round-content');
-    const chevron = document.getElementById('new-round-chevron');
-    const toggle = document.getElementById('new-round-toggle');
-    
-    if (isNewRoundExpanded) {
-        // Collapse
-        content.style.maxHeight = '0px';
-        content.style.paddingTop = '0';
-        content.style.paddingBottom = '0';
-        chevron.style.transform = 'rotate(-90deg)';
-        isNewRoundExpanded = false;
-        
-        // Store state in localStorage
-        localStorage.setItem('newRoundExpanded', 'false');
-    } else {
-        // Expand
-        content.style.maxHeight = '1000px'; // Large enough to accommodate content
-        content.style.paddingTop = '';
-        content.style.paddingBottom = '';
-        chevron.style.transform = 'rotate(0deg)';
-        isNewRoundExpanded = true;
-        
-        // Store state in localStorage
-        localStorage.setItem('newRoundExpanded', 'true');
-    }
+    // Collapsing disabled - New Round is always expanded
+    isNewRoundExpanded = true;
 }
 
 // Function to auto-collapse when round starts
 function autoCollapseNewRound() {
-    if (isNewRoundExpanded) {
-        toggleNewRoundSection();
-    }
+    // Collapsing disabled
 }
 
 // Sort courses by different criteria with direction support
@@ -352,7 +316,6 @@ function displayCourses() {
         if (isPeekCard) {
             cardClasses += ' peek-card opacity-40 hover:opacity-60 pointer-events-auto overflow-hidden';
             courseCard.onclick = () => {
-                handleShowMoreLess();
                 showAllCourses = true;
                 displayCourses();
             };
@@ -407,6 +370,12 @@ function displayCourses() {
                             <span class="text-orange-600">📏</span>
                             <span class="font-medium">~${avgDistance}m</span>
                         </span>
+                        <button onclick="event.stopPropagation(); showCourseLeaderboard(${course.id}, '${course.name.replace(/'/g, "\\'")}')"
+                                class="ml-auto flex items-center justify-center w-7 h-7 rounded-full transition-all duration-150 hover:scale-110 active:scale-95 flex-shrink-0"
+                                style="background:rgba(245,158,11,0.12);font-size:14px"
+                                title="View leaderboard">
+                            🏆
+                        </button>
                     </div>
                 </div>
             </div>
@@ -441,7 +410,6 @@ function displayCourses() {
         showLessButton.className = 'w-full py-2 text-xs text-gray-600 hover:text-gray-800 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors mt-2';
         showLessButton.textContent = 'Show Less';
         showLessButton.onclick = () => {
-            handleShowMoreLess();
             showAllCourses = false;
             displayCourses();
         };
@@ -456,27 +424,8 @@ function displayCourses() {
 
 // Function to restore collapse state on page load
 function restoreNewRoundState() {
-    const savedState = localStorage.getItem('newRoundExpanded');
-    if (savedState === 'false') {
-        // Set initial state without animation
-        const content = document.getElementById('new-round-content');
-        const chevron = document.getElementById('new-round-chevron');
-        const toggle = document.getElementById('new-round-toggle');
-        
-        if (content && chevron && toggle) {
-            content.style.maxHeight = '0px';
-            content.style.paddingTop = '0';
-            content.style.paddingBottom = '0';
-            content.style.transition = 'none'; // Disable transition for initial load
-            chevron.style.transform = 'rotate(-90deg)';
-            isNewRoundExpanded = false;
-            
-            // Re-enable transition after a short delay
-            setTimeout(() => {
-                content.style.transition = 'all 0.3s ease-in-out';
-            }, 100);
-        }
-    }
+    // Collapsing disabled - always expanded
+    isNewRoundExpanded = true;
 }
 
 async function signUp() {
@@ -686,15 +635,11 @@ async function loadCourses() {
         // Add this to the course selection UI in loadCourses()
         distanceElement.innerHTML = `
             <div class="flex items-center justify-between w-full">
-                <div class="flex items-center gap-1">
-                    <div class="flex items-center gap-2">
-                        <h2 class="text-xl font-bold text-gray-800">New Round</h2>
-                        ${userLocation ? 
-                            '<button onclick="refreshLocationFromBadge(event)" class="px-2 py-1 bg-green-100 hover:bg-green-200 text-green-700 text-xs rounded-full transition-colors duration-200 cursor-pointer">📍 Sorted by distance</button>' : 
-                            '<span class="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded-full">📍 Location disabled</span>'
-                        }
-                    </div>
-                </div>
+                <h2 class="text-xl font-bold text-gray-800">New Round</h2>
+                ${userLocation ?
+                    '<button onclick="refreshLocationFromBadge(event)" class="px-2 py-1 bg-green-100 hover:bg-green-200 text-green-700 text-xs rounded-full transition-colors duration-200 cursor-pointer">📍 Sorted by distance</button>' :
+                    '<span class="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded-full">📍 Location disabled</span>'
+                }
             </div>
         `;
         // Update the course selection UI - replace the existing courseSelection.innerHTML section with:
@@ -2105,9 +2050,9 @@ async function loadFriends() {
                         <div class="min-w-0 flex-1">
                             <div class="flex items-center gap-1">
                                 <h4 class="font-semibold text-gray-900 text-sm truncate">${friend.username}</h4>
-                                <button onclick="event.stopPropagation(); toggleFriendFavorite('${friend.id}', '${friend.username}')" 
-                                        class="hover:scale-110 transition-transform duration-200 flex-shrink-0">
-                                    <span class="material-symbols-rounded ${isFavorite ? 'text-yellow-400 star-filled' : 'text-gray-400 star-outlined'}">
+                                <button onclick="event.stopPropagation(); toggleFriendFavorite('${friend.id}', '${friend.username}')"
+                                        class="hover:scale-125 transition-transform duration-200 flex-shrink-0 bg-transparent border-none cursor-pointer p-0">
+                                    <span class="material-symbols-rounded ${isFavorite ? 'star-filled' : 'star-outlined'}" id="friend-list-star-${friend.id}">
                                         star
                                     </span>
                                 </button>
@@ -2241,10 +2186,11 @@ async function showFriendDetails(friend, stats) {
                         <div>
                             <div class="flex items-center gap-2">
                                 <h3 class="text-xl font-bold text-gray-900">${friend.username}</h3>
-                                <button onclick="event.stopPropagation(); toggleFriendFavorite('${friend.id}', '${friend.username}')" 
-                                        class="text-2xl hover:scale-110 transition-transform duration-200" 
-                                        id="favorite-star-${friend.id}">
-                                    ${friend.is_favorite ? '⭐' : '☆'}
+                                <button onclick="event.stopPropagation(); toggleFriendFavorite('${friend.id}', '${friend.username}')"
+                                        class="hover:scale-125 transition-transform duration-200 bg-transparent border-none cursor-pointer p-0">
+                                    <span class="material-symbols-rounded ${friend.is_favorite ? 'star-filled' : 'star-outlined'}" id="favorite-star-${friend.id}">
+                                        star
+                                    </span>
                                 </button>
                             </div>
                             <p class="text-gray-600 text-sm">${friend.bio || 'No bio set'}</p>
@@ -2252,20 +2198,20 @@ async function showFriendDetails(friend, stats) {
                     </div>
                     
                     <div class="grid grid-cols-4 gap-3 mb-6">
-                        <div class="text-center p-3 bg-indigo-50 rounded-lg">
-                            <div class="text-[10px] font-bold text-indigo-600">${totalRounds}</div>
+                        <div class="text-center p-3 rounded-lg" style="background:rgba(23,184,144,0.1)">
+                            <div class="text-[10px] font-bold" style="color:#17b890">${totalRounds}</div>
                             <div class="text-[10px] text-gray-600 leading-tight">Total<br>Rounds</div>
                         </div>
-                        <div class="text-center p-3 bg-orange-50 rounded-lg">
-                            <div class="text-[10px] font-bold text-orange-600">${totalThrows.toLocaleString()}</div>
+                        <div class="text-center p-3 rounded-lg" style="background:rgba(157,197,187,0.2)">
+                            <div class="text-[10px] font-bold" style="color:#5e807f">${totalThrows.toLocaleString()}</div>
                             <div class="text-[10px] text-gray-600 leading-tight">Total<br>Throws</div>
                         </div>
                         <div class="text-center p-3 bg-green-50 rounded-lg">
                             <div class="text-[10px] font-bold text-green-600">${avgScoreDisplay}</div>
                             <div class="text-[10px] text-gray-600 leading-tight">Average<br>Score</div>
                         </div>
-                        <div class="text-center p-3 bg-purple-50 rounded-lg">
-                            <div class="text-[10px] font-bold text-purple-600">${bestScoreDisplay}</div>
+                        <div class="text-center p-3 rounded-lg" style="background:rgba(8,45,15,0.08)">
+                            <div class="text-[10px] font-bold" style="color:#082d0f">${bestScoreDisplay}</div>
                             <div class="text-[10px] text-gray-600 leading-tight">Best<br>Round</div>
                         </div>
                     </div>
@@ -2320,13 +2266,19 @@ async function toggleFriendFavorite(friendId, friendUsername) {
             throw updateError;
         }
 
-        // Update the star icon in the modal if it exists
-        const starButton = document.getElementById(`favorite-star-${friendId}`);
-        if (starButton) {
-            starButton.textContent = newFavoriteStatus ? '⭐' : '☆';
+        // Update star in modal (if open)
+        const modalStar = document.getElementById(`favorite-star-${friendId}`);
+        if (modalStar) {
+            modalStar.className = `material-symbols-rounded ${newFavoriteStatus ? 'star-filled' : 'star-outlined'}`;
         }
 
-        // Reload friends list to update order
+        // Update star in friends list card (if rendered)
+        const listStar = document.getElementById(`friend-list-star-${friendId}`);
+        if (listStar) {
+            listStar.className = `material-symbols-rounded ${newFavoriteStatus ? 'star-filled' : 'star-outlined'}`;
+        }
+
+        // Reload friends list to update sort order
         loadFriends();
 
     } catch (error) {
@@ -2735,6 +2687,7 @@ function showCanvasConfetti() {
 }
 
 function showSection(sectionId) {
+    window.scrollTo(0, 0);
     // Hide all sections
     document.querySelectorAll('.section').forEach(s => {
         s.classList.remove('active');
@@ -2763,6 +2716,17 @@ function showSection(sectionId) {
         }
     });
     
+    // Show Start Round bar only on new-round section (and only when no scorecard active)
+    const startBar = document.getElementById('start-round-bar');
+    if (startBar) {
+        const scorecardVisible = document.getElementById('scorecard')?.style.display === 'block';
+        if (sectionId === 'new-round' && !scorecardVisible) {
+            startBar.classList.remove('hidden');
+        } else {
+            startBar.classList.add('hidden');
+        }
+    }
+
     // Load data for specific sections
     if (sectionId === 'history') loadHistory();
     if (sectionId === 'progress') updateProgress();
@@ -2869,6 +2833,8 @@ async function startRound() {
         createScorecard(course, [currentUsername]);
         document.getElementById('current-course').textContent = course.name;
         document.getElementById('scorecard').style.display = 'block';
+        document.getElementById('start-round-bar')?.classList.add('hidden');
+        document.getElementById('course-selector-panel')?.classList.add('hidden');
 
         // Auto-collapse the new round section to save space
         autoCollapseNewRound();
@@ -3076,7 +3042,7 @@ async function addGuestPlayerToRound() {
         inputPlaceholder: 'Enter guest player name',
         showCancelButton: true,
         confirmButtonText: 'Add Player',
-        confirmButtonColor: '#3b82f6',
+        confirmButtonColor: '#17b890',
         cancelButtonColor: '#6c757d',
         inputValidator: (value) => {
             if (!value || !value.trim()) {
@@ -3250,6 +3216,8 @@ async function deleteCurrentRound() {
             // Clear current round and hide scorecard
             currentRound = null;
             document.getElementById('scorecard').style.display = 'none';
+        document.getElementById('start-round-bar')?.classList.remove('hidden');
+        document.getElementById('course-selector-panel')?.classList.remove('hidden');
             document.getElementById('course').value = '';
 
             // Always expand new round section after deleting - ADDED
@@ -3751,6 +3719,8 @@ async function finishRound() {
         showCanvasConfetti();
         
         document.getElementById('scorecard').style.display = 'none';
+        document.getElementById('start-round-bar')?.classList.remove('hidden');
+        document.getElementById('course-selector-panel')?.classList.remove('hidden');
         document.getElementById('course').value = '';
         
         // Expand new round section after finishing
@@ -3796,7 +3766,8 @@ async function loadHistory() {
         }
 
         container.innerHTML = '';
-        container.className = 'space-y-3';
+        container.className = 'space-y-2';
+        openDateGroup = 0;
 
         if (!rounds || rounds.length === 0) {
             container.innerHTML = '<div class="text-center text-gray-500 py-12">No rounds completed yet. Finish your first round!</div>';
@@ -3812,107 +3783,105 @@ async function loadHistory() {
 
         const currentUsername = profile?.username;
 
-        // Group rounds by date
-        const roundsByDate = {};
+        // Group rounds by year → date
+        const roundsByYear = {};
         rounds.forEach(round => {
-            const date = round.date;
-            if (!roundsByDate[date]) {
-                roundsByDate[date] = [];
-            }
-            roundsByDate[date].push(round);
+            const year = round.date.substring(0, 4);
+            if (!roundsByYear[year]) roundsByYear[year] = {};
+            if (!roundsByYear[year][round.date]) roundsByYear[year][round.date] = [];
+            roundsByYear[year][round.date].push(round);
         });
 
-        // Get sorted dates (most recent first)
-        const sortedDates = Object.keys(roundsByDate).sort((a, b) => new Date(b) - new Date(a));
-        
-        // Create date groups
-        sortedDates.forEach((date, dateIndex) => {
-            const roundsForDate = roundsByDate[date];
-            const isLatestDate = dateIndex === 0; // Only latest date is open by default
-            
-            // Create date group container
-            const dateGroup = document.createElement('div');
-            dateGroup.className = 'bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden';
-            dateGroup.id = `date-group-${dateIndex}`;
+        const sortedYears = Object.keys(roundsByYear).sort((a, b) => b - a);
+        const today = new Date();
+        const yesterday = new Date(today);
+        yesterday.setDate(yesterday.getDate() - 1);
 
-            // Calculate date stats
-            const totalRoundsForDate = roundsForDate.length;
-            const scoresRelativeToParForDate = roundsForDate
-                .map(round => {
-                    if (round.final_scores && currentUsername && round.final_scores[currentUsername] != null) {
-                        const userScore = round.final_scores[currentUsername];
-                        // Find course to get par
-                        const course = coursesData.find(c => c.id == round.course_id);
-                        const par = course ? course.holes.reduce((a, b) => a + b, 0) : 0;
-                        return par > 0 ? userScore - par : null;
-                    }
-                    return null;
-                })
-                .filter(score => score !== null);
+        let globalDateIndex = 0; // flat index so toggleDateGroup IDs stay unique
 
-            const avgScoreForDate = scoresRelativeToParForDate.length > 0 ? 
-                (() => {
-                    const avg = (scoresRelativeToParForDate.reduce((a, b) => a + b, 0) / scoresRelativeToParForDate.length);
-                    return avg >= 0 ? `+${avg.toFixed(1)}` : avg.toFixed(1);
-                })() : '-';
-            const bestScoreForDate = scoresRelativeToParForDate.length > 0 ? 
-                (() => {
-                    const best = Math.min(...scoresRelativeToParForDate);
-                    return best >= 0 ? `+${best}` : best.toString();
-                })() : '-';
+        sortedYears.forEach(year => {
+            // Year banner
+            const yearBanner = document.createElement('div');
+            yearBanner.className = 'history-year-banner';
+            yearBanner.innerHTML = `<span>${year}</span>`;
+            container.appendChild(yearBanner);
 
-            // Format date for display
-            const dateObj = new Date(date + 'T00:00:00');
-            const today = new Date();
-            const yesterday = new Date(today);
-            yesterday.setDate(yesterday.getDate() - 1);
-            
-            let displayDate;
-            if (dateObj.toDateString() === today.toDateString()) {
-                displayDate = 'Today';
-            } else if (dateObj.toDateString() === yesterday.toDateString()) {
-                displayDate = 'Yesterday';
-            } else {
-                displayDate = date;
-                date = "";
-            }
+            const datesInYear = Object.keys(roundsByYear[year]).sort((a, b) => new Date(b) - new Date(a));
 
-            dateGroup.innerHTML = `
-                <!-- Date Header -->
-                <button onclick="toggleDateGroup(${dateIndex})" 
-                        class="w-full p-4 text-left hover:bg-gray-50 transition-colors duration-200 focus:outline-none">
-                    <div class="flex justify-between items-center">
-                        <div class="flex-1">
-                            <div class="flex items-center justify-between mb-2">
-                                <div class="flex items-baseline gap-2">
-                                    <h3 class="text-lg font-bold text-gray-900">${displayDate}</h3>
-                                    <span class="text-sm text-gray-400">${date}</span>
-                                </div>
-                                <div class="text-sm text-gray-600 font-medium">
-                                    ${totalRoundsForDate} round${totalRoundsForDate !== 1 ? 's' : ''}
+            datesInYear.forEach(date => {
+                const roundsForDate = roundsByYear[year][date];
+                const dateIndex = globalDateIndex++;
+                const isLatestDate = dateIndex === 0;
+
+                // Stats for this date
+                const scoresRelativeToPar = roundsForDate
+                    .map(round => {
+                        if (round.final_scores && currentUsername && round.final_scores[currentUsername] != null) {
+                            const userScore = round.final_scores[currentUsername];
+                            const course = coursesData.find(c => c.id == round.course_id);
+                            const par = course ? course.holes.reduce((a, b) => a + b, 0) : 0;
+                            return par > 0 ? userScore - par : null;
+                        }
+                        return null;
+                    })
+                    .filter(s => s !== null);
+
+                const avgScoreForDate = scoresRelativeToPar.length > 0
+                    ? (() => { const avg = scoresRelativeToPar.reduce((a, b) => a + b, 0) / scoresRelativeToPar.length; return avg >= 0 ? `+${avg.toFixed(1)}` : avg.toFixed(1); })()
+                    : '-';
+                const bestScoreForDate = scoresRelativeToPar.length > 0
+                    ? (() => { const best = Math.min(...scoresRelativeToPar); return best >= 0 ? `+${best}` : best.toString(); })()
+                    : '-';
+
+                // Format date label
+                const dateObj = new Date(date + 'T00:00:00');
+                let displayDate, subLabel;
+                if (dateObj.toDateString() === today.toDateString()) {
+                    displayDate = 'Today';
+                    subLabel = dateObj.toLocaleDateString('en-SE', { month: 'short', day: 'numeric' });
+                } else if (dateObj.toDateString() === yesterday.toDateString()) {
+                    displayDate = 'Yesterday';
+                    subLabel = dateObj.toLocaleDateString('en-SE', { month: 'short', day: 'numeric' });
+                } else {
+                    displayDate = dateObj.toLocaleDateString('en-SE', { month: 'short', day: 'numeric' });
+                    subLabel = '';
+                }
+
+                const dateGroup = document.createElement('div');
+                dateGroup.className = 'bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden';
+                dateGroup.id = `date-group-${dateIndex}`;
+                dateGroup.innerHTML = `
+                    <button onclick="toggleDateGroup(${dateIndex})"
+                            class="w-full px-4 py-3 text-left hover:bg-gray-50 transition-colors duration-200 focus:outline-none">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-3 min-w-0">
+                                <div class="w-1 h-8 rounded-full flex-shrink-0" style="background:linear-gradient(to bottom,#17b890,#5e807f)"></div>
+                                <div>
+                                    <div class="flex items-baseline gap-2">
+                                        <span class="font-semibold text-gray-900 text-sm">${displayDate}</span>
+                                        ${subLabel ? `<span class="text-xs text-gray-400">${subLabel}</span>` : ''}
+                                    </div>
+                                    <div class="text-xs text-gray-500 mt-0.5">
+                                        ${roundsForDate.length} round${roundsForDate.length !== 1 ? 's' : ''}
+                                        ${scoresRelativeToPar.length > 0 ? `&nbsp;·&nbsp;Avg <strong style="color:#17b890">${avgScoreForDate}</strong>&nbsp;·&nbsp;Best <strong class="text-green-600">${bestScoreForDate}</strong>` : ''}
+                                    </div>
                                 </div>
                             </div>
-                            <div class="flex items-center gap-6 text-sm text-gray-600">
-                                <span>Avg: <strong class="text-indigo-600">${avgScoreForDate}</strong> │ Best: <strong class="text-green-600">${bestScoreForDate}</strong></span>
+                            <div id="date-chevron-${dateIndex}" class="ml-3 flex-shrink-0 transform transition-transform duration-300 ${isLatestDate ? 'rotate-180' : ''}">
+                                <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                                </svg>
                             </div>
                         </div>
-                        <div id="date-chevron-${dateIndex}" class="ml-4 transform transition-transform duration-300 ${isLatestDate ? 'rotate-180' : ''}">
-                            <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
-                            </svg>
+                    </button>
+                    <div id="date-content-${dateIndex}" class="border-t border-gray-100 transition-all duration-300 ease-in-out overflow-hidden ${isLatestDate ? '' : 'max-h-0'}" ${isLatestDate ? 'style="max-height:2000px"' : ''}>
+                        <div class="p-2">
+                            ${roundsForDate.map((round, roundIndex) => createRoundItem(round, `${dateIndex}-${roundIndex}`, currentUsername, user.id)).join('')}
                         </div>
                     </div>
-                </button>
-
-                <!-- Rounds Content -->
-                <div id="date-content-${dateIndex}" class="border-t border-gray-200 transition-all duration-300 ease-in-out overflow-hidden ${isLatestDate ? '' : 'max-h-0'}">
-                    <div class="p-2">
-                        ${roundsForDate.map((round, roundIndex) => createRoundItem(round, `${dateIndex}-${roundIndex}`, currentUsername, user.id)).join('')}
-                    </div>
-                </div>
-            `;
-
-            container.appendChild(dateGroup);
+                `;
+                container.appendChild(dateGroup);
+            });
         });
 
     } catch (error) {
@@ -4825,6 +4794,8 @@ async function loadCurrentRound() {
                 createScorecard(course, playerUsernames);
                 document.getElementById('current-course').textContent = course.name;
                 document.getElementById('scorecard').style.display = 'block';
+                document.getElementById('start-round-bar')?.classList.add('hidden');
+                document.getElementById('course-selector-panel')?.classList.add('hidden');
 
                 // Restore scores to the UI
                 Object.keys(currentRound.scores).forEach(playerId => {
@@ -4853,6 +4824,8 @@ async function loadCurrentRound() {
             }
         } else {
             document.getElementById('scorecard').style.display = 'none';
+        document.getElementById('start-round-bar')?.classList.remove('hidden');
+        document.getElementById('course-selector-panel')?.classList.remove('hidden');
             currentRound = null;
         }
     } catch (error) {
@@ -5539,6 +5512,9 @@ async function loadProfile() {
             updateCharacterCount('profile-bio', 'bio-count', 25);
         }, 100);
 
+        // Load course record badges
+        loadAndShowProfileBadges(user.id);
+
     } catch (error) {
         console.error('Unexpected error loading profile:', error);
         document.getElementById("profile-username").value = `User_${user.id.substring(0, 8)}`;
@@ -5756,6 +5732,8 @@ function resetAppState() {
     
     // Reset scorecard
     document.getElementById('scorecard').style.display = 'none';
+        document.getElementById('start-round-bar')?.classList.remove('hidden');
+        document.getElementById('course-selector-panel')?.classList.remove('hidden');
     
     // Reset global variables
     currentRound = null;
@@ -6228,6 +6206,221 @@ function updateLocationStatus() {
 }
 
 
+// ===== LEADERBOARD & BADGES =====
+
+async function loadCourseChampions() {
+    try {
+        const { data: rounds } = await supabase
+            .from('rounds')
+            .select('course_id, final_scores_by_id')
+            .eq('status', 'completed');
+
+        if (!rounds?.length) return;
+
+        // Find best score per course across all players
+        const courseBest = {}; // courseId → { score, userId }
+        rounds.forEach(round => {
+            if (!round.final_scores_by_id) return;
+            Object.entries(round.final_scores_by_id).forEach(([playerId, score]) => {
+                if (playerId.startsWith('guest_')) return;
+                if (!courseBest[round.course_id] || score < courseBest[round.course_id].score) {
+                    courseBest[round.course_id] = { score, userId: playerId };
+                }
+            });
+        });
+
+        // Tally record count per user
+        const champions = {};
+        Object.values(courseBest).forEach(({ userId }) => {
+            champions[userId] = (champions[userId] || 0) + 1;
+        });
+        courseChampions = champions;
+    } catch (e) {
+        console.error('Error loading course champions:', e);
+    }
+}
+
+async function showCourseLeaderboard(courseId, courseName) {
+    Swal.fire({ title: 'Loading leaderboard…', didOpen: () => Swal.showLoading(), showConfirmButton: false });
+
+    try {
+        const course = coursesData.find(c => c.id == courseId);
+        const coursePar = course ? course.holes.reduce((a, b) => a + b, 0) : 0;
+
+        const { data: rounds, error } = await supabase
+            .from('rounds')
+            .select('user_id, final_scores_by_id, player_usernames, date')
+            .eq('course_id', courseId)
+            .eq('status', 'completed');
+
+        if (error || !rounds?.length) {
+            Swal.fire({ title: courseName, text: 'No rounds played on this course yet.', icon: 'info' });
+            return;
+        }
+
+        // Best score per user
+        const bestMap = {}; // userId → { score, date, username }
+        rounds.forEach(round => {
+            if (!round.final_scores_by_id) return;
+            Object.entries(round.final_scores_by_id).forEach(([playerId, score]) => {
+                if (playerId.startsWith('guest_')) return;
+                if (!bestMap[playerId] || score < bestMap[playerId].score) {
+                    bestMap[playerId] = {
+                        score,
+                        date: round.date,
+                        username: round.player_usernames?.[playerId] || 'Unknown'
+                    };
+                }
+            });
+        });
+
+        const sorted = Object.entries(bestMap)
+            .map(([userId, d]) => ({ userId, ...d }))
+            .sort((a, b) => a.score - b.score)
+            .slice(0, 10);
+
+        if (!sorted.length) {
+            Swal.fire({ title: courseName, text: 'No scores recorded yet.', icon: 'info' });
+            return;
+        }
+
+        // Fetch profile pics
+        const { data: profiles } = await supabase
+            .from('profiles')
+            .select('id, profile_picture_base64, username')
+            .in('id', sorted.map(p => p.userId));
+
+        const profileMap = {};
+        profiles?.forEach(p => { profileMap[p.id] = p; });
+
+        const medals = ['🥇', '🥈', '🥉'];
+        const medalBorderColors = ['#f59e0b', '#9ca3af', '#cd7c2f'];
+
+        const rows = sorted.map((entry, i) => {
+            const profile = profileMap[entry.userId];
+            const pic = profile?.profile_picture_base64 || './images/user.png';
+            const username = profile?.username || entry.username;
+            const diff = coursePar > 0 ? entry.score - coursePar : null;
+            const scoreStr = diff === null ? entry.score : diff === 0 ? 'E' : diff > 0 ? `+${diff}` : `${diff}`;
+            const scoreColor = diff !== null && diff < 0 ? '#16a34a' : diff > 0 ? '#dc2626' : '#374151';
+            const medal = medals[i] || `${i + 1}.`;
+            const borderColor = medalBorderColors[i] || '#dee5e5';
+            const dateStr = entry.date
+                ? new Date(entry.date + 'T00:00:00').toLocaleDateString('en-SE', { month: 'short', day: 'numeric', year: 'numeric' })
+                : '';
+
+            return `
+                <div class="flex items-center gap-3 py-3 ${i < sorted.length - 1 ? 'border-b border-gray-100' : ''}">
+                    <div class="text-xl w-8 text-center flex-shrink-0">${medal}</div>
+                    <img src="${pic}" class="w-10 h-10 rounded-full object-cover flex-shrink-0 border-2" style="border-color:${borderColor}">
+                    <div class="flex-1 min-w-0">
+                        <div class="font-semibold text-gray-900 text-sm truncate">${username}</div>
+                        <div class="text-xs text-gray-400">${dateStr}</div>
+                    </div>
+                    <div class="font-bold text-base flex-shrink-0" style="color:${scoreColor}">${scoreStr}</div>
+                </div>`;
+        }).join('');
+
+        Swal.fire({
+            title: '',
+            html: `
+                <div class="text-left">
+                    <div class="flex items-center gap-3 mb-4">
+                        <div class="text-3xl">🏆</div>
+                        <div>
+                            <h3 class="font-bold text-gray-900 text-lg leading-tight">${courseName}</h3>
+                            <p class="text-xs text-gray-500">Par ${coursePar} · ${sorted.length} player${sorted.length !== 1 ? 's' : ''} · All-time best scores</p>
+                        </div>
+                    </div>
+                    <div>${rows}</div>
+                </div>`,
+            showConfirmButton: false,
+            showCloseButton: true,
+            width: '90%',
+            maxWidth: '420px'
+        });
+    } catch (e) {
+        console.error('Error showing leaderboard:', e);
+        Swal.fire({ icon: 'error', title: 'Error', text: 'Could not load leaderboard.' });
+    }
+}
+
+async function loadAndShowProfileBadges(userId) {
+    const container = document.getElementById('profile-badges-container');
+    if (!container) return;
+
+    container.innerHTML = '<div class="text-xs text-gray-400 animate-pulse">Loading records…</div>';
+
+    try {
+        // All completed rounds
+        const { data: allRounds } = await supabase
+            .from('rounds')
+            .select('course_id, course_name, final_scores_by_id')
+            .eq('status', 'completed');
+
+        if (!allRounds?.length) {
+            container.innerHTML = '<p class="text-xs text-gray-400">No records yet — keep playing! 🥏</p>';
+            return;
+        }
+
+        // Best score per (courseId, userId) and global best per courseId
+        const userBest = {};   // courseId → { score, courseName }
+        const globalBest = {}; // courseId → score
+
+        allRounds.forEach(round => {
+            if (!round.final_scores_by_id) return;
+            Object.entries(round.final_scores_by_id).forEach(([playerId, score]) => {
+                if (playerId.startsWith('guest_')) return;
+
+                // Global best
+                if (!globalBest[round.course_id] || score < globalBest[round.course_id]) {
+                    globalBest[round.course_id] = score;
+                }
+
+                // User best
+                if (playerId === userId) {
+                    if (!userBest[round.course_id] || score < userBest[round.course_id].score) {
+                        userBest[round.course_id] = { score, courseName: round.course_name };
+                    }
+                }
+            });
+        });
+
+        const records = Object.entries(userBest).filter(([courseId, { score }]) =>
+            score === globalBest[courseId]
+        );
+
+        if (!records.length) {
+            container.innerHTML = '<p class="text-xs text-gray-500">No course records yet — keep playing! 🥏</p>';
+            return;
+        }
+
+        container.innerHTML = `
+            <div class="grid grid-cols-2 gap-2">
+                ${records.map(([courseId, { score, courseName }]) => {
+                    const course = coursesData.find(c => c.id == courseId);
+                    const par = course ? course.holes.reduce((a, b) => a + b, 0) : 0;
+                    const diff = par > 0 ? score - par : null;
+                    const scoreStr = diff === null ? score : diff === 0 ? 'E' : diff > 0 ? `+${diff}` : `${diff}`;
+                    return `
+                        <button onclick="showCourseLeaderboard(${courseId}, '${courseName.replace(/'/g, "\\'")}')"
+                                class="flex flex-col items-center gap-1 rounded-xl px-3 py-3 text-center transition-all duration-200 hover:scale-105 active:scale-95"
+                                style="background:linear-gradient(135deg,#fffbeb,#fef3c7);border:1px solid #fde68a;box-shadow:0 2px 8px rgba(245,158,11,0.15)">
+                            <span style="font-size:22px">🥇</span>
+                            <div class="text-xs font-bold text-gray-800 truncate w-full">${courseName}</div>
+                            <div class="text-xs font-semibold" style="color:#d97706">${scoreStr}</div>
+                        </button>`;
+                }).join('')}
+            </div>`;
+
+    } catch (e) {
+        console.error('Error loading profile badges:', e);
+        container.innerHTML = '<p class="text-xs text-red-400">Could not load records.</p>';
+    }
+}
+
+// ===== END LEADERBOARD & BADGES =====
+
 // Add to window exports
 window.updatePlayerScoreDisplay = updatePlayerScoreDisplay;
 window.setScoreToPar = setScoreToPar;
@@ -6314,6 +6507,7 @@ window.refreshLocation = refreshLocation;
 window.saveUserLocationToSupabase = saveUserLocationToSupabase;
 window.getUserLocationFromSupabase = getUserLocationFromSupabase;
 window.getUserLocationWithCache = getUserLocationWithCache;
+window.showCourseLeaderboard = showCourseLeaderboard;
 
 window.addEventListener("DOMContentLoaded", async () => {
     // Check for password reset parameters in both search and hash

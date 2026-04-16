@@ -244,7 +244,7 @@
 
     .friend-card:hover {
         transform: translateY(-5px);
-        border-color: #667eea;
+        border-color: #17b890;
     }
 
     .friend-card h4 {

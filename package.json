@@ -1,0 +1,24 @@
+{
+  "name": "discgolftracker",
+  "version": "1.0.0",
+  "description": "A modern, feature-rich Progressive Web Application for tracking disc golf rounds, managing friends, and analyzing your game performance.",
+  "main": "gamemode.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Nicheen/DiscGolfTracker.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/Nicheen/DiscGolfTracker/issues"
+  },
+  "homepage": "https://github.com/Nicheen/DiscGolfTracker#readme",
+  "devDependencies": {
+    "vite": "^8.0.8"
+  }
+}

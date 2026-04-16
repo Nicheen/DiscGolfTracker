@@ -1,14 +1,14 @@
 /* Color Variables */
 :root {
-    --english-violet: #594157;
-    --ultra-violet: #726da8;
-    --glaucous: #7d8cc4;
-    --non-photo-blue: #a0d2db;
-    --mint-green: #bee7e8;
+    --english-violet: #082d0f;
+    --ultra-violet: #17b890;
+    --glaucous: #5e807f;
+    --non-photo-blue: #9dc5bb;
+    --mint-green: #dee5e5;
 }
 
 body {
-    background: linear-gradient(to bottom right, #6366f1, #a855f7, #ec4899);
+    background: linear-gradient(to bottom right, #082d0f, #5e807f, #17b890);
 }
 
 .login-screen {
@@ -29,7 +29,7 @@ body {
     width: 100%;
     border-radius: 0.5rem;
     padding: 2rem 1.5rem 0.01rem 2rem;
-    background: #fbf6fe;
+    background: #f4faf9;
     box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
 }
 
@@ -47,7 +47,7 @@ body {
     margin: 0 auto;
     border-radius: 0.5rem;
     padding: 2rem 1.5rem;
-    background: #fbf6fe;
+    background: #f4faf9;
     box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
 }
 
@@ -74,13 +74,13 @@ body {
     align-items: center;
     border-radius: 0.31rem;
     justify-content: center;
-    background: #F9F8FF;
-    border: 1px solid #D5CBFF;
+    background: #f4faf9;
+    border: 1px solid #9dc5bb;
     transition: 0.3s ease;
 }
 
 .social-login .social-button:hover {
-    background: #f1eff9;
+    background: #e8f7f3;
     border-color: var(--ultra-violet);
 }
 
@@ -97,7 +97,7 @@ body {
 .seperator span {
     position: relative;
     z-index: 1;
-    background: #fbf6fe;
+    background: #f4faf9;
     padding: 0 0.9rem;
     font-size: 1.06rem;
     font-weight: 500;
@@ -125,7 +125,7 @@ body {
     width: 100%;
     outline: none;
     border-radius: 0.31rem;
-    border: 1px solid #bfb3f2;
+    border: 1px solid #9dc5bb;
     padding: 0 1.25rem 0 3.12rem;
     transition: 0.2s ease;
 }
